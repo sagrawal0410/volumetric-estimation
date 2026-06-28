@@ -130,7 +130,7 @@ class ObjectPoseRecord:
 
 @dataclass
 class ViewRecord:
-    dataset: Literal["robi", "bop_tless"]
+    dataset: Literal["robi", "bop_tless", "zed_live"]
     scene_id: str
     view_id: str
     rgb_path: Path | str | None = None

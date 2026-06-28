@@ -1,0 +1,60 @@
+camera:
+  resolution: HD1080
+  fps: 15
+  depth_mode: NONE
+
+stereo_depth:
+  method: foundation_stereo
+  foundationstereo_repo: /path/to/FoundationStereo
+  checkpoint: /path/to/model_best_bp2.pth
+  min_depth_m: 0.2
+  max_depth_m: 4.0
+  valid_iters: 16
+  scale: 0.5
+
+fusion:
+  method: weighted_tsdf
+  voxel_length_m: 0.003
+  sdf_trunc_m: 0.015
+  depth_trunc_m: 4.0
+  extract_mesh_every: 5
+  min_weight_for_mesh: 2.0
+
+uncertainty:
+  run_right_to_left: true
+  use_photometric_consistency: true
+  use_range_weight: true
+  use_view_angle_weight: true
+  use_texture_weight: true
+  use_saturation_weight: true
+  use_multiview_agreement: true
+  tau_lr_px: 1.5
+  tau_photo: 0.08
+  tau_mv_m: 0.01
+  k_neighbor_views: 5
+  alpha_lr: 2.0
+  alpha_photo: 1.0
+  alpha_range: 1.0
+  alpha_angle: 1.0
+  alpha_texture: 0.5
+  alpha_sat: 1.0
+  alpha_mv: 2.0
+  w_min: 0.01
+  w_scale: 5.0
+  w_max_per_obs: 5.0
+
+capture:
+  num_keyframes: 40
+
+pose:
+  mode: zed_tracking
+  allow_no_pose_single_view: false
+
+output:
+  root: data/zed_captures
+
+visualization:
+  save_depth_colormaps: true
+  save_confidence_maps: true
+  save_mesh_screenshots: true
+  write_html_report: true

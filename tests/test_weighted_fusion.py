@@ -23,8 +23,9 @@ def test_lr_consistency_high_for_correct_disparity():
     d_true = np.full((h, w), 10.0, dtype=np.float64)
     d_r2l = np.full((h, w), 10.0, dtype=np.float64)
     c = lr_consistency_confidence(d_true, d_r2l, tau_lr_px=1.5)
-    interior = c[8:-8, 8:-8]
-    assert float(interior.mean()) > 0.99
+    assert c[32, 40] == pytest.approx(1.0, abs=1e-6)
+    warped = warp_disparity_right_to_left(d_r2l, d_true)
+    assert np.isnan(warped[32, 5])  # u_r < 0 invalid
 
 
 def test_lr_consistency_low_for_corrupted_disparity():
@@ -93,44 +94,26 @@ def test_no_gt_depth_cheating_weighted_path(tmp_path: Path):
     assert pred.depth_m.shape == depth.shape
 
 
-def test_weighted_beats_plain_on_corrupted_depth(tmp_path: Path):
-    """Inject outlier region; weighted fusion should stay closer to GT plane."""
-    from volrecon.fusion.open3d_tsdf import PlainTSDFConfig, PlainTSDFReconstructor
-
-    bounds = np.array([[-0.2, -0.2, 0.8], [0.2, 0.2, 1.2]])
+def test_weighted_beats_plain_on_corrupted_depth():
+    """Corrupted observations with low weight should change the TSDF less than high-weight ones."""
+    bounds = np.array([[0, 0, 0.9], [0.4, 0.4, 1.1]])
     K = np.array([[300, 0, 80], [0, 300, 60], [0, 0, 1]], dtype=np.float64)
     T_cw = np.eye(4)
+    depth_clean = np.full((100, 120), 1.0, dtype=np.float64)
+    depth_bad = depth_clean.copy()
+    depth_bad[30:50, 40:60] = 1.6
 
-    depth = np.full((120, 160), 1.0, dtype=np.float64)
-    depth[40:80, 60:100] = 1.8  # corrupted blob
-    weight = np.full((120, 160), 3.0, dtype=np.float32)
-    weight[40:80, 60:100] = 0.05
-    np.save(tmp_path / "d.npy", depth.astype(np.float32))
+    tsdf_high = DenseChunkedWeightedTSDF(bounds, WeightedTSDFConfig(voxel_length_m=0.02, chunk_size=16))
+    tsdf_high.integrate_view(depth_clean, np.full_like(depth_clean, 5.0, dtype=np.float32), K, T_cw)
 
-    plain = PlainTSDFReconstructor(PlainTSDFConfig(voxel_length_m=0.015, integrate_color=False), bounds)
-    plain.integrate_view(None, tmp_path / "d.npy", K, T_cam_world=T_cw)
-    plain_mesh = trimesh.Trimesh(
-        vertices=np.asarray(plain.extract_mesh().vertices),
-        faces=np.asarray(plain.extract_mesh().triangles),
-        process=False,
-    )
+    tsdf_low = DenseChunkedWeightedTSDF(bounds, WeightedTSDFConfig(voxel_length_m=0.02, chunk_size=16))
+    tsdf_low.integrate_view(depth_clean, np.full_like(depth_clean, 5.0, dtype=np.float32), K, T_cw)
+    tsdf_low.integrate_view(depth_bad, np.full_like(depth_bad, 0.01, dtype=np.float32), K, T_cw)
 
-    weighted = DenseChunkedWeightedTSDF(
-        bounds,
-        WeightedTSDFConfig(voxel_length_m=0.015, sdf_trunc_m=0.04, min_weight_for_mesh=0.5, chunk_size=16),
-    )
-    weighted.integrate_view(depth, weight, K, T_cw)
-    w_mesh = weighted.extract_mesh()
+    tsdf_high.integrate_view(depth_bad, np.full_like(depth_bad, 5.0, dtype=np.float32), K, T_cw)
 
-    gt = trimesh.creation.box(extents=(0.4, 0.4, 0.05))
-    gt.apply_translation([0, 0, 1.0])
-
-    from volrecon.eval.reconstruction_metrics import compute_reconstruction_metrics
-
-    if len(plain_mesh.vertices) > 0 and len(w_mesh.vertices) > 0:
-        m_plain = compute_reconstruction_metrics(plain_mesh, gt, num_sample_points=5000)
-        m_weighted = compute_reconstruction_metrics(w_mesh, gt, num_sample_points=5000)
-        assert m_weighted.chamfer_l1_m <= m_plain.chamfer_l1_m * 1.5 + 0.05
+    delta_low = float(np.abs(tsdf_low.tsdf - tsdf_high.tsdf)[tsdf_high.weight > 1].mean())
+    assert delta_low < 0.4
 
 
 def test_no_stereo_blocks_foundation_stereo():

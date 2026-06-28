@@ -1,0 +1,31 @@
+camera:
+  resolution: HD1080
+  fps: 15
+  coordinate_units: METER
+  depth_mode: NONE
+  output_resolution_scale: 1.0
+  serial_number: null
+  exposure: null
+  gain: null
+  white_balance: null
+
+capture:
+  scene_name: null
+  num_keyframes: 30
+  max_frames: null
+  save_every_n_frames: 5
+  min_seconds_between_keyframes: 0.25
+  min_translation_between_keyframes_m: 0.03
+  min_rotation_between_keyframes_deg: 5.0
+  save_preview_video: true
+
+pose:
+  mode: zed_tracking
+  fixed_rig_yaml: null
+  external_pose_file: null
+  allow_no_pose_single_view: false
+
+output:
+  root: data/zed_captures
+  image_format: png
+  save_lossless: true

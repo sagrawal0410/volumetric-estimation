@@ -1,0 +1,35 @@
+camera:
+  resolution: HD1080
+  fps: 15
+  depth_mode: NONE
+
+stereo_depth:
+  method: foundation_stereo
+  foundationstereo_repo: /path/to/FoundationStereo
+  checkpoint: /path/to/model_best_bp2.pth
+  min_depth_m: 0.2
+  max_depth_m: 4.0
+  valid_iters: 16
+  scale: 0.5
+
+fusion:
+  method: plain_tsdf
+  voxel_length_m: 0.003
+  sdf_trunc_m: 0.015
+  depth_trunc_m: 4.0
+  extract_mesh_every: 5
+
+capture:
+  num_keyframes: 30
+
+pose:
+  mode: zed_tracking
+  allow_no_pose_single_view: false
+
+output:
+  root: data/zed_captures
+
+visualization:
+  save_depth_colormaps: true
+  save_mesh_screenshots: true
+  write_html_report: true
