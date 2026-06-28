@@ -22,11 +22,15 @@ def _plot_batch(df: pd.DataFrame, out_root: Path) -> None:
     plots_dir = out_root / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    if df.empty:
+    if df.empty or "rel_error_percent" not in df.columns:
+        return
+
+    plot_df = df.dropna(subset=["rel_error_percent"])
+    if plot_df.empty:
         return
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    method_err = df.groupby("method")["rel_error_percent"].mean().dropna()
+    method_err = plot_df.groupby("method")["rel_error_percent"].mean().dropna()
     method_err.plot(kind="bar", ax=ax, color="steelblue")
     ax.set_ylabel("Mean relative error (%)")
     ax.set_title("Error by method")
@@ -36,12 +40,15 @@ def _plot_batch(df: pd.DataFrame, out_root: Path) -> None:
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(df["gt_volume_cm3"], df["pred_volume_cm3"], alpha=0.6, c="coral")
-    lims = [
-        min(df["gt_volume_cm3"].min(), df["pred_volume_cm3"].min()),
-        max(df["gt_volume_cm3"].max(), df["pred_volume_cm3"].max()),
-    ]
-    ax.plot(lims, lims, "k--", alpha=0.5)
+    if "gt_volume_cm3" in plot_df.columns and "pred_volume_cm3" in plot_df.columns:
+        valid = plot_df.dropna(subset=["gt_volume_cm3", "pred_volume_cm3"])
+        if not valid.empty:
+            ax.scatter(valid["gt_volume_cm3"], valid["pred_volume_cm3"], alpha=0.6, c="coral")
+            lims = [
+                min(valid["gt_volume_cm3"].min(), valid["pred_volume_cm3"].min()),
+                max(valid["gt_volume_cm3"].max(), valid["pred_volume_cm3"].max()),
+            ]
+            ax.plot(lims, lims, "k--", alpha=0.5)
     ax.set_xlabel("GT volume (cm³)")
     ax.set_ylabel("Predicted volume (cm³)")
     ax.set_title("Predicted vs GT")
@@ -50,7 +57,7 @@ def _plot_batch(df: pd.DataFrame, out_root: Path) -> None:
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    obj_err = df.groupby("object_id")["rel_error_percent"].mean().dropna()
+    obj_err = plot_df.groupby("object_id")["rel_error_percent"].mean().dropna()
     obj_err.plot(kind="bar", ax=ax, color="seagreen")
     ax.set_ylabel("Mean relative error (%)")
     ax.set_title("Error by object")
@@ -96,6 +103,9 @@ def run_batch(
                         "status": f"failed: {exc}",
                         "split": split,
                         "num_views": num_views,
+                        "gt_volume_cm3": None,
+                        "pred_volume_cm3": None,
+                        "rel_error_percent": None,
                     }
                 )
             continue
@@ -134,8 +144,18 @@ def run_batch(
     summary_path = out_root / "aggregate_summary.csv"
     df = pd.DataFrame(rows)
     df.to_csv(summary_path, index=False)
-    _plot_batch(df.dropna(subset=["rel_error_percent"]), out_root)
-    print(f"Aggregate summary: {summary_path}")
+    _plot_batch(df, out_root)
+
+    n_ok = 0
+    if "rel_error_percent" in df.columns:
+        n_ok = int(df["rel_error_percent"].notna().sum())
+    n_fail = len(df) - n_ok if len(df) else 0
+    if n_ok == 0 and len(df) > 0:
+        print(
+            "Warning: no successful evaluations — check aggregate_summary.csv 'status' column.",
+            file=__import__("sys").stderr,
+        )
+    print(f"Aggregate summary: {summary_path} ({n_ok} ok, {n_fail} without metrics)")
     return summary_path
 
 
