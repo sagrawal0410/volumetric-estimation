@@ -1,0 +1,13 @@
+dataset: bop_tless
+use_depth_input: false
+depth_source: foundation_stereo
+require_synthetic_stereo: true
+min_depth_m: 0.1
+max_depth_m: 3.0
+voxel_length_m: 0.002
+sdf_trunc_m: 0.010
+depth_trunc_m: 3.0
+frame_stride: 1
+max_views_per_scene: 40
+mesh_cleanup: true
+object_centric_bop: true
