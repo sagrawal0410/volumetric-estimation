@@ -7,7 +7,16 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from tless_volume_benchmark.mesh_volume import compute_mesh_volume_m3
+from tless_volume_benchmark.mesh_volume import compute_mesh_volume_m3, discover_tless_models_dir
+
+
+def test_discover_models_cad(tmp_path: Path):
+    cad = tmp_path / "models_cad"
+    cad.mkdir()
+    (cad / "models_info.json").write_text("{}", encoding="utf-8")
+    (cad / "obj_000001.ply").write_text("ply", encoding="utf-8")
+    found = discover_tless_models_dir(tmp_path, preference="cad")
+    assert found.name == "models_cad"
 
 
 def test_cube_mm_to_meters_volume(tmp_path: Path):

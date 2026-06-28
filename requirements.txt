@@ -7,4 +7,5 @@ pandas
 tqdm
 pyyaml
 matplotlib
+Pillow
 pytest

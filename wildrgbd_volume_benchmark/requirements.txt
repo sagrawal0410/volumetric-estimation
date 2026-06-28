@@ -1,0 +1,2 @@
+# WildRGB-D volume benchmark — see repo root requirements.txt
+# numpy opencv-python open3d trimesh scipy pandas tqdm pyyaml matplotlib Pillow pytest

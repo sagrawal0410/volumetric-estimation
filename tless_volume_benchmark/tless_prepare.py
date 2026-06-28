@@ -14,6 +14,7 @@ from tless_volume_benchmark.mesh_volume import (
     compute_fallback_convex_hull_gt,
     compute_mesh_volume_m3,
     load_tless_model_mesh_meters,
+    discover_tless_models_dir,
 )
 from tless_volume_benchmark.view_selection import save_selected_views_json, select_views
 from tless_volume_benchmark.visualize import (
@@ -58,6 +59,8 @@ def prepare_tless_scan(
     min_valid_depth_pixels: int = 100,
     repair_mesh: bool = False,
     use_convex_hull_fallback: bool = True,
+    model_dir: str | None = None,
+    model_preference: str = "cad",
 ) -> Path:
     """Prepare one normalized object-centric scan."""
     root = Path(dataset_root).expanduser().resolve()
@@ -65,7 +68,15 @@ def prepare_tless_scan(
     out.mkdir(parents=True, exist_ok=True)
 
     gt_mesh_path = out / "gt_mesh.ply"
-    mesh = load_tless_model_mesh_meters(root, object_id, out_gt_mesh_path=gt_mesh_path)
+    models_path = (
+        root / model_dir if model_dir else discover_tless_models_dir(root, preference=model_preference)
+    )
+    mesh = load_tless_model_mesh_meters(
+        root,
+        object_id,
+        model_dir=models_path.name,
+        out_gt_mesh_path=gt_mesh_path,
+    )
     vol_info = compute_mesh_volume_m3(mesh, repair=repair_mesh)
 
     exact_gt = False
@@ -79,6 +90,7 @@ def prepare_tless_scan(
             "exact_gt": exact_gt,
             "repaired": vol_info["repaired"],
             "source_mesh": str(gt_mesh_path),
+            "source_models_dir": str(models_path),
             "split": split,
             "num_vertices": vol_info["num_vertices"],
             "num_faces": vol_info["num_faces"],
@@ -94,6 +106,7 @@ def prepare_tless_scan(
             "exact_gt": False,
             "repaired": False,
             "source_mesh": str(gt_mesh_path),
+            "source_models_dir": str(models_path),
             "split": split,
             "warning": "Non-watertight model; using convex hull fallback (overestimate).",
         }
@@ -152,6 +165,17 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--min_valid_depth_pixels", type=int, default=100)
     parser.add_argument("--out_dir", required=True)
     parser.add_argument("--repair_mesh", action="store_true")
+    parser.add_argument(
+        "--model_dir",
+        default=None,
+        help="Explicit models folder name (e.g. models_cad). Default: auto-detect.",
+    )
+    parser.add_argument(
+        "--model_preference",
+        default="cad",
+        choices=["cad", "eval", "reconst"],
+        help="When auto-detecting, prefer models_cad (default), models_eval, or models_reconst.",
+    )
     args = parser.parse_args(argv)
 
     out = prepare_tless_scan(
@@ -163,6 +187,8 @@ def main(argv: list[str] | None = None) -> None:
         min_visib_fract=args.min_visib_fract,
         min_valid_depth_pixels=args.min_valid_depth_pixels,
         repair_mesh=args.repair_mesh,
+        model_dir=args.model_dir,
+        model_preference=args.model_preference,
     )
     print(f"Prepared scan: {out}")
 

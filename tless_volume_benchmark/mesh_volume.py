@@ -28,21 +28,84 @@ def clean_mesh(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     return cleaned
 
 
+GtType = Literal[
+    "mesh_watertight",
+    "mesh_repaired",
+    "mesh_convex_hull_fallback_not_exact",
+]
+
+# BOP T-LESS ships multiple model folders (same obj_*.ply names, different meshes).
+TLESS_MODEL_DIR_CANDIDATES = (
+    "models_cad",      # default for T-LESS in BOP — manual CAD models
+    "models",          # legacy / generic BOP layout
+    "models_reconst",  # reconstructed from training RGB-D (colored)
+    "models_eval",     # decimated/resampled for pose-error metrics — avoid for volume GT
+)
+
+
+def discover_tless_models_dir(
+    dataset_root: str | Path,
+    preference: str = "cad",
+) -> Path:
+    """
+    Find the T-LESS object models folder under a BOP dataset root.
+
+    Modern BOP archives provide ``models_cad`` and ``models_eval`` (not plain
+    ``models/``). Both contain ``obj_000001.ply`` … ``obj_000030.ply`` with the
+    same IDs but different mesh geometry.
+
+    For volume ground truth, prefer ``models_cad`` (original CAD). ``models_eval``
+    is uniformly decimated for BOP pose-error computation and can bias volume.
+    """
+    root = Path(dataset_root).expanduser().resolve()
+    if preference == "cad":
+        order = ("models_cad", "models", "models_reconst", "models_eval")
+    elif preference == "eval":
+        order = ("models_eval", "models_cad", "models", "models_reconst")
+    elif preference == "reconst":
+        order = ("models_reconst", "models_cad", "models", "models_eval")
+    else:
+        order = TLESS_MODEL_DIR_CANDIDATES
+
+    for name in order:
+        candidate = root / name
+        info = candidate / "models_info.json"
+        if candidate.is_dir() and info.is_file():
+            return candidate
+
+    raise FileNotFoundError(
+        f"No T-LESS models folder under {root}. Looked for: {order}. "
+        "Extract tless_models.zip into the dataset root; expect models_cad/ "
+        "and models_eval/ (BOP format), not necessarily models/."
+    )
+
+
 def load_tless_model_mesh_meters(
     dataset_root: str | Path,
     object_id: int,
-    model_dir: str = "models",
+    model_dir: str | None = None,
+    model_preference: str = "cad",
     out_gt_mesh_path: Path | None = None,
 ) -> trimesh.Trimesh:
     """
     Load T-LESS object model and convert vertices from mm to meters.
 
+    If ``model_dir`` is None, auto-discovers ``models_cad`` (preferred) or other
+    BOP model folders.
+
     Saves cleaned meter-scale mesh to out_gt_mesh_path if provided.
     """
     root = Path(dataset_root).expanduser().resolve()
-    mesh_path = root / model_dir / f"obj_{object_id:06d}.ply"
+    if model_dir is None:
+        models_path = discover_tless_models_dir(root, preference=model_preference)
+    else:
+        models_path = root / model_dir
+    mesh_path = models_path / f"obj_{object_id:06d}.ply"
     if not mesh_path.is_file():
-        raise FileNotFoundError(f"T-LESS model not found: {mesh_path}")
+        raise FileNotFoundError(
+            f"T-LESS model not found: {mesh_path}. "
+            f"Available model roots: {[p.name for p in root.iterdir() if p.is_dir() and p.name.startswith('models')]}"
+        )
 
     mesh = trimesh.load(mesh_path, force="mesh", process=False)
     if not isinstance(mesh, trimesh.Trimesh):

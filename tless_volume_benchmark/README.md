@@ -31,9 +31,10 @@ Expected layout after extraction:
 ```
 data/bop/tless/tless/
   dataset_info.json
-  models/
+  models_cad/          # CAD models — use this for volume GT (default)
     models_info.json
     obj_000001.ply ... obj_000030.ply
+  models_eval/         # decimated meshes for BOP pose-error metrics (same filenames)
   train_primesense/
     000001/
       rgb/ depth/ mask/ mask_visib/
@@ -41,6 +42,12 @@ data/bop/tless/tless/
   test_primesense/   # or test_primesense_bop19/
     ...
 ```
+
+- **`models_cad`** — manually created CAD models (BOP default for T-LESS). **Use for volume GT.**
+- **`models_eval`** — same `obj_*.ply` names but uniformly decimated/resampled for ADD/ADI pose-error computation in BOP. Volumes are similar but not identical; avoid for ground-truth volume unless comparing to BOP eval meshes.
+- **`models_reconst`** — optional; RGB-D reconstructed models with color (may appear in some downloads).
+
+The benchmark auto-detects `models_cad` first. Override with `--model_dir models_cad` or `--model_preference eval`.
 
 ## Quick start
 

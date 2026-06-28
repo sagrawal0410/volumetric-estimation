@@ -77,6 +77,8 @@ Supported adapters: `bop`, `ycb` (see `volume_benchmark/datasets/`).
 
 For T-LESS BOP volume benchmarking, see [`tless_volume_benchmark/README.md`](tless_volume_benchmark/README.md).
 
+For WildRGB-D in-the-wild volume benchmarking, see [`wildrgbd_volume_benchmark/README.md`](wildrgbd_volume_benchmark/README.md).
+
 ### Evaluate one scan
 
 ```bash
@@ -119,7 +121,8 @@ pytest tests/ -v -m "not slow"
 volume_benchmark/
   common/          # io, geometry, mesh_volume, metrics, view_selection, visualization
   datasets/        # bop, ycb adapters
-  tless_volume_benchmark/  # T-LESS BOP volume benchmark (separate package)
+  tless_volume_benchmark/  # T-LESS BOP volume benchmark
+  wildrgbd_volume_benchmark/  # WildRGB-D pseudo-GT volume benchmark
   methods/         # convex_hull, tsdf, voxel_carving
   prepare_dataset.py
   run_eval.py
