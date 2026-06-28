@@ -3,6 +3,7 @@ opencv-python
 open3d
 trimesh
 scipy
+scikit-image
 pandas
 tqdm
 pyyaml

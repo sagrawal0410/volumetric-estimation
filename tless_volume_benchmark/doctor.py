@@ -7,30 +7,22 @@ import subprocess
 import sys
 
 
-_OPEN3D_TSDF_PROBE = """
+_NUMPY_TSDF_PROBE = """
 import numpy as np
-import open3d as o3d
+import trimesh
+from tless_volume_benchmark.methods.tsdf_numpy import fuse_tsdf_grid, tsdf_grid_to_mesh
+from tless_volume_benchmark.scan_io import PreparedScan, PreparedFrame
 
-h, w = 64, 64
-depth = np.zeros((h, w), dtype=np.float32)
-depth[20:44, 20:44] = 0.45
-color = o3d.geometry.Image(np.zeros((h, w, 3), dtype=np.uint8))
-dimg = o3d.geometry.Image(depth)
-rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-    color, dimg, depth_scale=1.0, depth_trunc=2.0, convert_rgb_to_intensity=False
-)
-vol = o3d.pipelines.integration.UniformTSDFVolume(
-    0.6,
-    64,
-    0.04,
-    o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
-    origin=[-0.3, -0.3, 0.2],
-)
-intr = o3d.camera.PinholeCameraIntrinsic(w, h, 200.0, 200.0, w / 2, h / 2)
-extr = np.eye(4, dtype=np.float64)
-vol.integrate(rgbd, intr, extr)
-mesh = vol.extract_triangle_mesh()
-print(f"ok vertices={len(mesh.vertices)}")
+K = np.array([[200,0,64],[0,200,64],[0,0,1]], float)
+T = np.eye(4)
+depth = np.zeros((128,128), np.float32)
+depth[40:88,40:88] = 0.45
+mask = depth > 0
+frame = PreparedFrame(0, np.zeros((128,128,3), np.uint8), depth, mask, K, T, {})
+scan = PreparedScan(__import__('pathlib').Path('.'), [frame], {'volume_m3': 0.001}, None)
+tsdf, w, origin, meta = fuse_tsdf_grid(scan, voxel_length=0.004, sdf_trunc=0.02)
+mesh = tsdf_grid_to_mesh(tsdf, origin, meta['voxel_length_m'])
+print(f'ok faces={len(mesh.faces)} backend=numpy')
 """
 
 
@@ -40,38 +32,38 @@ def _probe(label: str, code: str) -> tuple[str, str]:
             [sys.executable, "-c", code],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
+            cwd=str(__import__("pathlib").Path(__file__).resolve().parents[1]),
+            env={**__import__("os").environ, "PYTHONPATH": str(__import__("pathlib").Path(__file__).resolve().parents[1])},
         )
         if r.returncode == 0:
             return "ok", (r.stdout or "").strip() or label
         if r.returncode < 0:
             sig = -r.returncode
-            return "fail", f"crashed (signal {sig}, often segfault in native code)"
+            return "fail", f"crashed (signal {sig})"
         msg = (r.stderr or r.stdout or "failed").strip().splitlines()
         return "fail", (msg[-1] if msg else "failed")[:240]
     except subprocess.TimeoutExpired:
-        return "fail", "timed out (possible hang/crash)"
+        return "fail", "timed out"
     except Exception as exc:
         return "fail", str(exc)
 
 
 def main() -> int:
+    root = __import__("pathlib").Path(__file__).resolve().parents[1]
     print(f"Python: {sys.executable}")
     print(f"Machine: {platform.machine()}  ({platform.platform()})")
+    print(f"Repo root: {root}")
     print()
 
     checks = [
         ("numpy", "import numpy as np; print(np.__version__)"),
         ("opencv", "import cv2; print(cv2.__version__)"),
         ("trimesh", "import trimesh; print(trimesh.__version__)"),
-        (
-            "scipy",
-            "import scipy; from scipy.spatial import cKDTree; import numpy as np; "
-            "cKDTree(np.zeros((4,3))); print(scipy.__version__)",
-        ),
+        ("scipy", "import scipy; print(scipy.__version__)"),
+        ("scikit-image", "import skimage; print(skimage.__version__)"),
+        ("numpy_tsdf", _NUMPY_TSDF_PROBE),
         ("open3d_import", "import open3d as o3d; print(o3d.__version__)"),
-        ("open3d_tsdf_integrate", _OPEN3D_TSDF_PROBE),
-        ("sklearn", "import sklearn; print(sklearn.__version__)"),
     ]
     failed = 0
     for name, code in checks:
@@ -83,14 +75,11 @@ def main() -> int:
 
     print()
     if failed:
-        print("Some checks failed.")
-        print("Open3D import OK but TSDF integrate crash → broken/incompatible Open3D build.")
-        print("Try:")
-        print("  pip uninstall -y open3d && pip install 'open3d>=0.17,<0.20'")
-        print("  export TLESS_TSDF_BACKEND=uniform   # default; safer than scalable")
-        print("  --methods convex_hull voxel_carving   # skip TSDF")
+        print("TSDF default backend is numpy (TLESS_TSDF_BACKEND=numpy). Open3D is optional.")
+        print("  pip install scikit-image   # marching cubes for TSDF mesh export")
+        print("  export TLESS_TSDF_BACKEND=open3d   # only if open3d integrate works on your machine")
         return 1
-    print("All checks passed (including Open3D TSDF integrate).")
+    print("All checks passed. TSDF uses numpy backend by default (no Open3D required).")
     return 0
 
 

@@ -9,7 +9,7 @@ Given 4–5 RGB-D views with visible object masks, per-frame intrinsics, and GT 
 | Method | Description | Expected bias |
 |--------|-------------|---------------|
 | `convex_hull` | Fuse back-projected depth, convex hull volume | Overestimates non-convex objects |
-| `tsdf` | Open3D ScalableTSDF fusion | Best when views, masks, depth, and poses are good |
+| `tsdf` | NumPy TSDF fusion (+ optional Open3D) | Best when views, masks, depth, and poses are good |
 | `voxel_carving` | Depth-aware visual hull carving | Overestimates occluded concavities |
 
 ## Download T-LESS (BOP format)
@@ -130,30 +130,23 @@ Object/model coordinates are the shared world frame.
 
 ## Troubleshooting
 
-**Segmentation fault on `Running tsdf...`** — Open3D native code crashed during TSDF fusion (common on Linux with some Open3D wheels).
+**Segmentation fault on `Running tsdf...`** — Open3D crashed. **Default TSDF backend is now pure NumPy** (no Open3D). Pull latest and run again; you should see `TSDF backend: numpy`.
 
-1. Re-run doctor (now tests a real TSDF integrate, not just import):
+Optional Open3D path: `export TLESS_TSDF_BACKEND=open3d` (only if your Open3D build is stable).
+
+Install marching-cubes support:
 ```bash
-python -m tless_volume_benchmark.doctor
+pip install scikit-image
 ```
 
-2. Latest code defaults to **`UniformTSDFVolume`** (bounded cube) instead of `ScalableTSDFVolume`. Pull latest and retry:
+**View a PLY mesh:**
 ```bash
-python -m tless_volume_benchmark.run_eval \
-  --scan_dir prepared/tless_obj_000001_train \
-  --methods tsdf \
-  --voxel_length 0.002 --sdf_trunc 0.010
+python -m tless_volume_benchmark.visualize_mesh prepared/tless_obj_000001_train/gt_mesh.ply
+python -m tless_volume_benchmark.visualize_mesh prepared/tless_obj_000001_train/outputs/tsdf/tsdf_mesh_cleaned.ply
+python -m tless_volume_benchmark.visualize_mesh prepared/tless_obj_000001_train/outputs/compare/tsdf_gt_vs_pred_side_by_side.ply
 ```
 
-3. Reinstall Open3D if doctor fails on `open3d_tsdf_integrate`:
-```bash
-pip uninstall -y open3d
-pip install 'open3d>=0.17,<0.20'
-```
-
-4. If scalable backend is required: `export TLESS_TSDF_BACKEND=scalable` (less stable on some systems).
-
-**Segmentation fault with no output** — broken native library (Open3D, scipy, sklearn) or wrong-arch wheels.
+On a headless Linux server, use X forwarding (`ssh -X`) or copy PLYs to your laptop and open in [MeshLab](https://www.meshlab.net/) / Blender.
 
 1. Diagnose:
 ```bash
@@ -175,12 +168,13 @@ python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_t
 python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_train --methods voxel_carving
 ```
 
-4. Skip TSDF if Open3D is the problem:
+4. Optional Open3D TSDF (only if numpy backend is not enough):
 ```bash
-python -m tless_volume_benchmark.run_eval --scan_dir ... --methods convex_hull voxel_carving
+export TLESS_TSDF_BACKEND=open3d
+python -m tless_volume_benchmark.run_eval --scan_dir ... --methods tsdf
 ```
 
-`run_eval` now prints progress before each method. If it dies silently during `Running tsdf...`, Open3D is the culprit. If **`Running convex_hull...`** ends with **`Killed`**, that was OOM from the old NumPy-only outlier path — pull latest code (scipy used by default) or pass a coarser downsample, e.g. add `--voxel_downsample 0.003` if exposed (currently only via API; default is 0.0015 in estimate_convex_hull).
+`run_eval` prints progress per method. **`Running convex_hull...` + Killed** = OOM — use latest code or `--voxel_downsample 0.003`.
 
 ## Tests
 
@@ -201,5 +195,7 @@ tless_volume_benchmark/
   run_eval.py         # Single-scan evaluation
   run_batch.py        # Batch prepare + eval
   visualize.py        # Debug overlays
-  methods/            # convex_hull, tsdf, voxel_carving
+  visualize_mesh.py   # Interactive PLY viewer
+  compare_results.py  # GT vs pred table + side-by-side PLYs
+  methods/            # convex_hull, tsdf (numpy), tsdf_open3d, voxel_carving
 ```

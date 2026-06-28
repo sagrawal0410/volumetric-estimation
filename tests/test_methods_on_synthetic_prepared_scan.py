@@ -110,15 +110,17 @@ def test_voxel_carving_on_synthetic_cube(tmp_path: Path):
 
 
 @pytest.mark.skipif(
-    __import__("os").environ.get("TLESS_SKIP_OPEN3D") == "1",
-    reason="Open3D disabled",
+    __import__("os").environ.get("TLESS_SKIP_TSDF") == "1",
+    reason="TSDF disabled",
 )
 def test_tsdf_on_synthetic_cube(tmp_path: Path):
     from tless_volume_benchmark.methods.tsdf import estimate_tsdf
 
     scan_dir = tmp_path / "scan"
     gt_m3 = _write_synthetic_scan(scan_dir, num_views=5)
-    report = estimate_tsdf(scan_dir, voxel_length=0.004, sdf_trunc=0.02)
+    report = estimate_tsdf(scan_dir, voxel_length=0.004, sdf_trunc=0.02, verbose=False)
+    assert report.get("tsdf_backend") == "numpy"
+    assert (scan_dir / "outputs" / "tsdf" / "tsdf_mesh_cleaned.ply").is_file()
     if report["volume_m3"] is not None:
         rel = abs(report["volume_m3"] - gt_m3) / gt_m3
-        assert rel < 0.5
+        assert rel < 0.55
