@@ -130,7 +130,30 @@ Object/model coordinates are the shared world frame.
 
 ## Troubleshooting
 
-**Segmentation fault with no output** — almost always a broken native library (Open3D, scipy, or sklearn) from an x86_64/arm64 Python mismatch on Apple Silicon.
+**Segmentation fault on `Running tsdf...`** — Open3D native code crashed during TSDF fusion (common on Linux with some Open3D wheels).
+
+1. Re-run doctor (now tests a real TSDF integrate, not just import):
+```bash
+python -m tless_volume_benchmark.doctor
+```
+
+2. Latest code defaults to **`UniformTSDFVolume`** (bounded cube) instead of `ScalableTSDFVolume`. Pull latest and retry:
+```bash
+python -m tless_volume_benchmark.run_eval \
+  --scan_dir prepared/tless_obj_000001_train \
+  --methods tsdf \
+  --voxel_length 0.002 --sdf_trunc 0.010
+```
+
+3. Reinstall Open3D if doctor fails on `open3d_tsdf_integrate`:
+```bash
+pip uninstall -y open3d
+pip install 'open3d>=0.17,<0.20'
+```
+
+4. If scalable backend is required: `export TLESS_TSDF_BACKEND=scalable` (less stable on some systems).
+
+**Segmentation fault with no output** — broken native library (Open3D, scipy, sklearn) or wrong-arch wheels.
 
 1. Diagnose:
 ```bash
