@@ -157,7 +157,7 @@ python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_t
 python -m tless_volume_benchmark.run_eval --scan_dir ... --methods convex_hull voxel_carving
 ```
 
-`run_eval` now prints progress before each method. If it dies silently during `Running tsdf...`, Open3D is the culprit. During `Running convex_hull...`, reinstall scipy/sklearn or pull latest code (convex hull defaults to NumPy-only outlier removal).
+`run_eval` now prints progress before each method. If it dies silently during `Running tsdf...`, Open3D is the culprit. If **`Running convex_hull...`** ends with **`Killed`**, that was OOM from the old NumPy-only outlier path — pull latest code (scipy used by default) or pass a coarser downsample, e.g. add `--voxel_downsample 0.003` if exposed (currently only via API; default is 0.0015 in estimate_convex_hull).
 
 ## Tests
 

@@ -25,6 +25,7 @@ def run_eval(
     voxel_length: float = 0.002,
     sdf_trunc: float = 0.010,
     voxel_size: float = 0.0025,
+    voxel_downsample: float = 0.0015,
     repair_mesh: bool = False,
 ) -> list[dict]:
     print(f"Loading scan: {scan_dir}", flush=True)
@@ -41,6 +42,8 @@ def run_eval(
             kwargs = dict(voxel_length=voxel_length, sdf_trunc=sdf_trunc, repair_mesh=repair_mesh)
         elif name == "voxel_carving":
             kwargs = dict(voxel_size=voxel_size)
+        elif name == "convex_hull":
+            kwargs = dict(voxel_downsample=voxel_downsample)
         try:
             report = METHODS[name](scan_dir, **kwargs)
             status = "ok" if report.get("volume_m3") is not None else report.get("status", "failed")
@@ -106,6 +109,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--voxel_length", type=float, default=0.002)
     parser.add_argument("--sdf_trunc", type=float, default=0.010)
     parser.add_argument("--voxel_size", type=float, default=0.0025)
+    parser.add_argument(
+        "--voxel_downsample",
+        type=float,
+        default=0.0015,
+        help="Convex hull point-cloud downsample voxel size (m); increase if OOM/Killed",
+    )
     parser.add_argument("--repair_mesh", action="store_true")
     args = parser.parse_args(argv)
     run_eval(
@@ -114,6 +123,7 @@ def main(argv: list[str] | None = None) -> None:
         voxel_length=args.voxel_length,
         sdf_trunc=args.sdf_trunc,
         voxel_size=args.voxel_size,
+        voxel_downsample=args.voxel_downsample,
         repair_mesh=args.repair_mesh,
     )
 

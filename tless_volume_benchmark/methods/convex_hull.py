@@ -30,18 +30,27 @@ def _voxel_downsample(points: np.ndarray, voxel_size: float) -> np.ndarray:
 def _remove_statistical_outliers(points: np.ndarray, nb_neighbors: int = 20, std_ratio: float = 2.0) -> np.ndarray:
     if points.shape[0] <= nb_neighbors:
         return points
-    # NumPy fallback is the default: broken scipy wheels (x86_64 on arm64) can segfault in cKDTree.
-    if os.environ.get("TLESS_USE_SCIPY", "0") == "1":
+
+    use_scipy = os.environ.get("TLESS_SKIP_SCIPY", "0") != "1"
+    if use_scipy:
         try:
             from scipy.spatial import cKDTree
 
             tree = cKDTree(points)
-            dists, _ = tree.query(points, k=min(nb_neighbors + 1, points.shape[0]))
+            k = min(nb_neighbors + 1, points.shape[0])
+            dists, _ = tree.query(points, k=k)
+            if dists.ndim == 1:
+                return points
             mean_dist = dists[:, 1:].mean(axis=1)
             thresh = float(mean_dist.mean() + std_ratio * mean_dist.std())
             return points[mean_dist <= thresh]
         except Exception:
             pass
+
+    # O(n²) all-pairs distances can exhaust RAM on real scans (→ OS "Killed").
+    max_exact = int(os.environ.get("TLESS_OUTLIER_MAX_EXACT_POINTS", "1500"))
+    if points.shape[0] > max_exact:
+        return points
 
     k = min(nb_neighbors, max(1, points.shape[0] - 1))
     diff = points[:, None, :] - points[None, :, :]
@@ -96,7 +105,9 @@ def estimate_convex_hull(
     out.mkdir(parents=True, exist_ok=True)
 
     points = fuse_points(scan, depth_min=depth_min, depth_max=depth_max)
+    n_raw = int(points.shape[0])
     points = _voxel_downsample(points, voxel_downsample)
+    n_down = int(points.shape[0])
     points = _remove_statistical_outliers(points)
     points = _largest_cluster(points, eps=3.0 * voxel_downsample)
     if points.shape[0] < 4:
@@ -114,6 +125,8 @@ def estimate_convex_hull(
         "volume_m3": volume_m3,
         "volume_cm3": volume_m3 * 1e6,
         "num_points": int(points.shape[0]),
+        "num_points_fused": n_raw,
+        "num_points_after_downsample": n_down,
         "voxel_downsample": voxel_downsample,
         "expected_bias": "usually overestimates non-convex objects",
         "outputs": {
