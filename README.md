@@ -2,7 +2,7 @@
 
 Multi-view volume reconstruction from stereo RGB images (ROBI + BOP/T-LESS).
 
-See [README_DATASETS.md](README_DATASETS.md) for dataset preprocessing and [README_PLAIN_TSDF.md](README_PLAIN_TSDF.md) for the plain TSDF baseline pipeline.
+See [README_DATASETS.md](README_DATASETS.md) for dataset preprocessing, [README_PLAIN_TSDF.md](README_PLAIN_TSDF.md) for the plain baseline, and [README_WEIGHTED_TSDF.md](README_WEIGHTED_TSDF.md) for uncertainty-weighted fusion.
 
 ## Setup
 
