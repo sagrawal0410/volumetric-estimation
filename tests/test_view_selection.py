@@ -12,7 +12,6 @@ from volume_benchmark.common.view_selection import (
     CandidateFrame,
     angular_distance_deg,
     camera_center_object,
-    select_bigbird_views,
     select_diverse_views,
     view_direction_object,
 )
@@ -136,19 +135,3 @@ def test_filter_rejects_low_visible_fraction():
         min_visible_fraction=0.5,
     )
     assert all((c.visible_fraction or 0.0) >= 0.5 for c in selected)
-
-
-def test_select_bigbird_views_legacy_api():
-    poses = []
-    counts = []
-    for i in range(8):
-        angle = 2 * np.pi * i / 8
-        eye = np.array([0.5 * np.cos(angle), 0.0, 0.5 * np.sin(angle)])
-        poses.append(_look_at_pose(eye))
-        counts.append(5000 - i * 100)
-
-    selected = select_bigbird_views(
-        poses, counts, num_views=5, min_valid_depth_pixels=1000
-    )
-    assert len(selected) == 5
-    assert selected[0] == 0

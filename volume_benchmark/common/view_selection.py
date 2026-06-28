@@ -343,45 +343,6 @@ def select_spread_views(
     return [id_to_index[c.frame_id] for c in selected]
 
 
-def select_bigbird_views(
-    poses_T_cam_to_object: list[np.ndarray],
-    valid_pixel_counts: list[int],
-    num_views: int,
-    min_valid_depth_pixels: int = 1000,
-) -> list[int]:
-    """Legacy BigBIRD index selection API."""
-    if len(poses_T_cam_to_object) != len(valid_pixel_counts):
-        raise ValueError("poses and valid_pixel_counts must have the same length")
-
-    dummy_depth = np.ones((8, 8), dtype=np.float32)
-    dummy_mask = np.ones((8, 8), dtype=bool)
-    dummy_K = np.eye(3, dtype=np.float64)
-
-    candidates = [
-        CandidateFrame(
-            depth_m=dummy_depth,
-            mask=dummy_mask,
-            K=dummy_K,
-            T_cam_to_object=T,
-            metadata={
-                "valid_object_depth_pixels": count,
-                "frame_id": str(i),
-            },
-        )
-        for i, (T, count) in enumerate(zip(poses_T_cam_to_object, valid_pixel_counts, strict=True))
-    ]
-    selected = select_diverse_views(
-        candidates,
-        num_views=num_views,
-        min_valid_depth_pixels=min_valid_depth_pixels,
-        min_mask_pixels=0,
-        min_angle_deg=20.0,
-        prefer_high_elevation=True,
-    )
-    id_to_index = {str(i): i for i in range(len(poses_T_cam_to_object))}
-    return [id_to_index[c.frame_id] for c in selected]
-
-
 def select_uniform_indices(num_total: int, num_views: int) -> list[int]:
     """Evenly spaced frame indices (fallback when poses are unavailable)."""
     if num_views <= 0:

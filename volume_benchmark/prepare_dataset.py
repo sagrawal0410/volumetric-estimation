@@ -15,7 +15,6 @@ from volume_benchmark.common.mesh_volume import (
     load_mesh_as_meters,
     write_gt_volume_json,
 )
-from volume_benchmark.datasets.bigbird_adapter import prepare_bigbird_scan
 from volume_benchmark.datasets.bop_adapter import prepare_bop_scan
 from volume_benchmark.datasets.ycb_adapter import prepare_ycb_scan
 
@@ -48,24 +47,12 @@ def _load_manifest(manifest_path: Path) -> dict:
 def _prepare_from_manifest(manifest: dict) -> Path:
     dataset = manifest.get("dataset")
     if not dataset:
-        raise ValueError("Manifest must include 'dataset' (bop, ycb, or bigbird)")
+        raise ValueError("Manifest must include 'dataset' (bop or ycb)")
 
     output_dir = Path(manifest["output_dir"])
     repair_mesh = bool(manifest.get("repair_mesh", False))
     mesh_units = manifest.get("mesh_units", "auto")
     metadata = manifest.get("metadata", {})
-
-    if dataset == "bigbird" and "object_root" in manifest:
-        return prepare_bigbird_scan(
-            object_root=manifest["object_root"],
-            out_dir=output_dir,
-            num_views=int(manifest.get("num_views", 5)),
-            config_path=manifest.get("config_path"),
-            min_valid_depth_pixels=int(manifest.get("min_valid_depth_pixels", 1000)),
-            gt_source=manifest.get("gt_source", "mesh_then_merged_pointcloud"),
-            gt_voxel_size=float(manifest.get("gt_voxel_size", 0.0015)),
-            repair_mesh=repair_mesh,
-        )
 
     mesh_path = Path(manifest["mesh_path"])
     frames = _parse_frame_triplets(manifest["frames"])
@@ -118,19 +105,6 @@ def _prepare_mesh_only(args: argparse.Namespace) -> Path:
     return output_dir
 
 
-def _prepare_bigbird_cli(args: argparse.Namespace) -> Path:
-    return prepare_bigbird_scan(
-        object_root=args.object_root,
-        out_dir=args.out_dir,
-        num_views=args.num_views,
-        config_path=args.config,
-        min_valid_depth_pixels=args.min_valid_depth_pixels,
-        gt_source=args.gt_source,
-        gt_voxel_size=args.gt_voxel_size,
-        repair_mesh=not args.no_repair_mesh,
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare normalized volume-benchmark scan directories from raw datasets."
@@ -140,45 +114,6 @@ def build_parser() -> argparse.ArgumentParser:
     manifest = sub.add_parser("from-manifest", help="Prepare scan from YAML/JSON manifest")
     manifest.add_argument("manifest", type=Path, help="Path to manifest (.yaml/.json)")
     manifest.add_argument(
-        "--validate",
-        action="store_true",
-        help="Run validate_prepared_scan after writing",
-    )
-
-    bigbird = sub.add_parser("bigbird", help="Prepare scan from a BigBIRD object folder")
-    bigbird.add_argument("--dataset", default="bigbird", help=argparse.SUPPRESS)
-    bigbird.add_argument(
-        "--object_root",
-        type=Path,
-        required=True,
-        help="Root folder for one BigBIRD object",
-    )
-    bigbird.add_argument(
-        "--out_dir",
-        type=Path,
-        required=True,
-        help="Output prepared scan directory",
-    )
-    bigbird.add_argument("--num_views", type=int, default=5)
-    bigbird.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Optional bigbird_config.yaml with path overrides",
-    )
-    bigbird.add_argument("--min_valid_depth_pixels", type=int, default=1000)
-    bigbird.add_argument(
-        "--gt_source",
-        choices=["mesh", "merged_pointcloud", "mesh_then_merged_pointcloud"],
-        default="mesh_then_merged_pointcloud",
-    )
-    bigbird.add_argument("--gt_voxel_size", type=float, default=0.0015)
-    bigbird.add_argument(
-        "--no-repair-mesh",
-        action="store_true",
-        help="Do not attempt mesh repair before falling back to pseudo-GT",
-    )
-    bigbird.add_argument(
         "--validate",
         action="store_true",
         help="Run validate_prepared_scan after writing",
@@ -203,8 +138,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "from-manifest":
             out = _prepare_from_manifest(_load_manifest(args.manifest))
-        elif args.command == "bigbird":
-            out = _prepare_bigbird_cli(args)
         elif args.command == "mesh-gt":
             out = _prepare_mesh_only(args)
         else:

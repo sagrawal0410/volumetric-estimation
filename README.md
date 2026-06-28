@@ -73,7 +73,9 @@ Compute GT volume for a mesh only:
 python -m volume_benchmark.prepare_dataset mesh-gt model.ply out/gt_only --mesh-units auto
 ```
 
-Supported adapters: `bop`, `ycb`, `bigbird` (see `volume_benchmark/datasets/`).
+Supported adapters: `bop`, `ycb` (see `volume_benchmark/datasets/`).
+
+For T-LESS BOP volume benchmarking, see [`tless_volume_benchmark/README.md`](tless_volume_benchmark/README.md).
 
 ### Evaluate one scan
 
@@ -116,7 +118,8 @@ pytest tests/ -v -m "not slow"
 ```
 volume_benchmark/
   common/          # io, geometry, mesh_volume, metrics, view_selection, visualization
-  datasets/        # bop, ycb, bigbird adapters
+  datasets/        # bop, ycb adapters
+  tless_volume_benchmark/  # T-LESS BOP volume benchmark (separate package)
   methods/         # convex_hull, tsdf, voxel_carving
   prepare_dataset.py
   run_eval.py

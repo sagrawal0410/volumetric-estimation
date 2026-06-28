@@ -117,6 +117,39 @@ def _fill_silhouette(depth_m: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray,
     return depth.astype(np.float32), mask_bool
 
 
+def _rasterize_points_to_depth(
+    points_object: np.ndarray,
+    K: np.ndarray,
+    T_cam_to_object: np.ndarray,
+    image_shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Z-buffer rasterize object-frame points into depth (m) and bool mask."""
+    from volume_benchmark.common.geometry import transform_points
+
+    height, width = image_shape
+    T_object_to_cam = invert_T(T_cam_to_object)
+    points_cam = transform_points(points_object, T_object_to_cam)
+    x, y, z = points_cam[:, 0], points_cam[:, 1], points_cam[:, 2]
+    in_front = z > 1e-4
+    depth = np.zeros((height, width), dtype=np.float32)
+    mask = np.zeros((height, width), dtype=bool)
+    if not np.any(in_front):
+        return depth, mask
+
+    x, y, z = x[in_front], y[in_front], z[in_front]
+    u = K[0, 0] * x / z + K[0, 2]
+    v = K[1, 1] * y / z + K[1, 2]
+    ui = np.round(u).astype(int)
+    vi = np.round(v).astype(int)
+    in_image = (ui >= 0) & (ui < width) & (vi >= 0) & (vi < height)
+    ui, vi, z = ui[in_image], vi[in_image], z[in_image]
+    for uu, vv, zz in zip(ui, vi, z):
+        if not mask[vv, uu] or zz < depth[vv, uu]:
+            depth[vv, uu] = zz
+            mask[vv, uu] = True
+    return depth, mask
+
+
 def create_shape_scan(
     output_dir: Path,
     mesh: trimesh.Trimesh,
@@ -127,8 +160,6 @@ def create_shape_scan(
     **metadata_extra,
 ) -> Path:
     """Write a prepared scan by rasterizing surface samples (no rtree needed)."""
-    from volume_benchmark.datasets.bigbird_adapter import rasterize_points_to_depth
-
     if gt_volume_m3 is None:
         volume_m3, watertight, gt_type = compute_mesh_volume_m3(mesh)
     else:
@@ -151,7 +182,7 @@ def create_shape_scan(
         angle = 2 * np.pi * i / num_views
         eye = np.array([radius * np.cos(angle), 0.05 * (i % 2), radius * np.sin(angle)])
         T = _look_at_pose(eye)
-        depth_m, mask = rasterize_points_to_depth(
+        depth_m, mask = _rasterize_points_to_depth(
             surface_points, K, T, image_shape=(height, width)
         )
         depth_m, mask = _fill_silhouette(depth_m, mask)
