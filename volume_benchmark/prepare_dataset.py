@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from volume_benchmark.bootstrap import ensure_repo_root_on_path
 from volume_benchmark.common.io import validate_prepared_scan
 from volume_benchmark.common.mesh_volume import (
     compute_mesh_volume_m3,
@@ -213,6 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_repo_root_on_path()
     parser = build_parser()
     args = parser.parse_args(argv)
 

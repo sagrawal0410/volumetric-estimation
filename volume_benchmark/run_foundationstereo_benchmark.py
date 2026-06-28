@@ -292,6 +292,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from volume_benchmark.bootstrap import ensure_repo_root_on_path
+
+    ensure_repo_root_on_path()
     args = build_parser().parse_args(argv)
 
     if args.dataset in ("bop_stereo_rendered", "tless_stereo_rendered"):
