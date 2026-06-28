@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -29,24 +30,32 @@ def _voxel_downsample(points: np.ndarray, voxel_size: float) -> np.ndarray:
 def _remove_statistical_outliers(points: np.ndarray, nb_neighbors: int = 20, std_ratio: float = 2.0) -> np.ndarray:
     if points.shape[0] <= nb_neighbors:
         return points
-    try:
-        from scipy.spatial import cKDTree
+    # NumPy fallback is the default: broken scipy wheels (x86_64 on arm64) can segfault in cKDTree.
+    if os.environ.get("TLESS_USE_SCIPY", "0") == "1":
+        try:
+            from scipy.spatial import cKDTree
 
-        tree = cKDTree(points)
-        dists, _ = tree.query(points, k=min(nb_neighbors + 1, points.shape[0]))
-        mean_dist = dists[:, 1:].mean(axis=1)
-    except Exception:
-        k = min(nb_neighbors, max(1, points.shape[0] - 1))
-        diff = points[:, None, :] - points[None, :, :]
-        dists = np.linalg.norm(diff, axis=2)
-        np.fill_diagonal(dists, np.inf)
-        mean_dist = np.partition(dists, k, axis=1)[:, :k].mean(axis=1)
+            tree = cKDTree(points)
+            dists, _ = tree.query(points, k=min(nb_neighbors + 1, points.shape[0]))
+            mean_dist = dists[:, 1:].mean(axis=1)
+            thresh = float(mean_dist.mean() + std_ratio * mean_dist.std())
+            return points[mean_dist <= thresh]
+        except Exception:
+            pass
+
+    k = min(nb_neighbors, max(1, points.shape[0] - 1))
+    diff = points[:, None, :] - points[None, :, :]
+    dists = np.linalg.norm(diff, axis=2)
+    np.fill_diagonal(dists, np.inf)
+    mean_dist = np.partition(dists, k, axis=1)[:, :k].mean(axis=1)
     thresh = float(mean_dist.mean() + std_ratio * mean_dist.std())
     return points[mean_dist <= thresh]
 
 
 def _largest_cluster(points: np.ndarray, eps: float, min_samples: int = 10) -> np.ndarray:
     if points.shape[0] < min_samples:
+        return points
+    if os.environ.get("TLESS_USE_SKLEARN", "0") != "1":
         return points
     try:
         from sklearn.cluster import DBSCAN

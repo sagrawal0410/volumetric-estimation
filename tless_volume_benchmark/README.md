@@ -128,6 +128,37 @@ Object/model coordinates are the shared world frame.
 - Visible masks cover only the visible surface; full object volume requires multi-view fusion and comparison to the mesh GT.
 - Non-watertight CAD models may use convex-hull fallback GT (labeled `exact_gt=false`).
 
+## Troubleshooting
+
+**Segmentation fault with no output** — almost always a broken native library (Open3D, scipy, or sklearn) from an x86_64/arm64 Python mismatch on Apple Silicon.
+
+1. Diagnose:
+```bash
+python -m tless_volume_benchmark.doctor
+```
+
+2. Recreate the venv with native arm64 Python:
+```bash
+rm -rf .venv
+python3 -m venv .venv && source .venv/bin/activate
+pip install -U pip && pip install -r requirements.txt
+python -m tless_volume_benchmark.doctor
+```
+
+3. Run methods one at a time to see which crashes:
+```bash
+python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_train --methods convex_hull
+python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_train --methods tsdf
+python -m tless_volume_benchmark.run_eval --scan_dir prepared/tless_obj_000001_train --methods voxel_carving
+```
+
+4. Skip TSDF if Open3D is the problem:
+```bash
+python -m tless_volume_benchmark.run_eval --scan_dir ... --methods convex_hull voxel_carving
+```
+
+`run_eval` now prints progress before each method. If it dies silently during `Running tsdf...`, Open3D is the culprit. During `Running convex_hull...`, reinstall scipy/sklearn or pull latest code (convex hull defaults to NumPy-only outlier removal).
+
 ## Tests
 
 ```bash

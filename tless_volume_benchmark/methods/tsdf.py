@@ -43,7 +43,21 @@ def estimate_tsdf(
     output_dir: str | Path | None = None,
     repair_mesh: bool = False,
 ) -> dict[str, Any]:
-    import open3d as o3d
+    import os
+
+    if os.environ.get("TLESS_SKIP_OPEN3D", "0") == "1":
+        raise RuntimeError(
+            "Open3D disabled (TLESS_SKIP_OPEN3D=1). Run without tsdf or fix Open3D install."
+        )
+    try:
+        import open3d as o3d
+    except Exception as exc:
+        raise ImportError(
+            "Open3D failed to import (common on Apple Silicon with wrong-arch wheels). "
+            "Recreate the venv with native arm64 Python: "
+            "  rm -rf .venv && python3 -m venv .venv && pip install -r requirements.txt\n"
+            "Or skip TSDF: --methods convex_hull voxel_carving"
+        ) from exc
 
     scan = load_prepared_scan(scan_dir)
     out = resolve_output_dir(scan.scan_dir, "tsdf", Path(output_dir) if output_dir else None)

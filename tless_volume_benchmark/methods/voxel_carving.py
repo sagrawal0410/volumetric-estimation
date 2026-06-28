@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,15 @@ def estimate_voxel_carving(
     xx, yy, zz = np.meshgrid(xs, ys, zs, indexing="ij")
     centers = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1)
     num_total = centers.shape[0]
+    max_voxels = int(os.environ.get("TLESS_MAX_VOXELS", "50000000"))
+    if num_total > max_voxels:
+        extent = hi - lo
+        raise ValueError(
+            f"Voxel grid too large ({num_total:,} voxels, limit {max_voxels:,}). "
+            f"Object bounds extent (m): {extent.tolist()}, voxel_size={voxel_size}. "
+            "This often means depth is in mm instead of meters, or voxel_size is too small. "
+            "Try larger --voxel_size (e.g. 0.004) or re-run tless_prepare."
+        )
 
     kept = np.ones(num_total, dtype=bool)
     views_checked = np.zeros(num_total, dtype=np.int32)

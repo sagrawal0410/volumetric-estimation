@@ -79,6 +79,68 @@ For T-LESS BOP volume benchmarking, see [`tless_volume_benchmark/README.md`](tle
 
 For WildRGB-D in-the-wild volume benchmarking, see [`wildrgbd_volume_benchmark/README.md`](wildrgbd_volume_benchmark/README.md).
 
+### FoundationStereo stereo-depth pipeline
+
+T-LESS and WildRGB-D provide monocular RGB-D only. For FoundationStereo benchmarking, the pipeline renders **synthetic rectified stereo pairs** from GT/pseudo-GT meshes (clearly labeled in metadata — not real dataset stereo).
+
+```
+prepared_stereo_scan/          →  FoundationStereo disparity  →  metric depth  →  volume methods
+  frames/frame_*_{left,right}.png       fx * baseline / disp          convex_hull / tsdf / voxel_carving
+```
+
+**Prepared stereo scan format** (`volume_benchmark/stereo/`):
+
+```
+prepared_stereo_scan/
+  K_left.npy
+  baseline_m.json
+  gt_mesh.ply
+  gt_volume.json
+  frames/frame_000_{left,right}.png
+  frames/frame_000_mask.png
+  frames/frame_000_T_left_cam_to_object.npy
+```
+
+Prepare rendered stereo (T-LESS):
+
+```bash
+python -m volume_benchmark.prepare_dataset render-stereo \
+  --dataset tless_stereo_rendered \
+  --dataset_root data/bop/tless/tless \
+  --split test_primesense --object_id 1 \
+  --num_views 5 --baseline_m 0.12 \
+  --out_dir prepared_stereo/tless_obj_001 --validate
+```
+
+WildRGB-D (requires `wildrgbd_volume_benchmark.prepare_scene` first):
+
+```bash
+python -m volume_benchmark.prepare_dataset render-stereo \
+  --dataset wildrgbd_stereo_rendered \
+  --prepared_scene_dir prepared/apple/scenes_000123 \
+  --baseline_m 0.12 \
+  --out_dir prepared_stereo/wildrgbd_apple_123 --validate
+```
+
+Run FoundationStereo → depth → volume (end-to-end):
+
+```bash
+export FOUNDATIONSTEREO_MOCK=1   # tests only; omit when repo+checkpoint installed
+python -m volume_benchmark.run_foundationstereo_benchmark \
+  --dataset tless_stereo_rendered \
+  --dataset_root data/bop/tless/tless \
+  --object_id 1 --num_views 5 --baseline_m 0.12 \
+  --foundationstereo_repo /path/to/Fast-FoundationStereo \
+  --checkpoint /path/to/checkpoint.pth \
+  --out_root experiments/fs_tless_obj_001 \
+  --methods convex_hull tsdf voxel_carving \
+  --compare-dataset-depth
+```
+
+Depth on the FS path always has `depth_source=foundationstereo` in frame metadata. Use `--compare-dataset-depth` to also run volume methods on dataset-provided depth (separate baseline in `summary.csv`).
+
+Install [NVlabs/Fast-FoundationStereo](https://github.com/NVlabs/Fast-FoundationStereo) or [NVlabs/FoundationStereo](https://github.com/NVlabs/FoundationStereo) separately; pass `--variant fast` (default) or `full`.
+
 ### Evaluate one scan
 
 ```bash
@@ -120,13 +182,15 @@ pytest tests/ -v -m "not slow"
 ```
 volume_benchmark/
   common/          # io, geometry, mesh_volume, metrics, view_selection, visualization
-  datasets/        # bop, ycb adapters
+  datasets/        # bop, ycb, *_stereo_adapter adapters
+  stereo/          # FoundationStereo backend, disparity_depth, render_stereo_from_mesh
   tless_volume_benchmark/  # T-LESS BOP volume benchmark
   wildrgbd_volume_benchmark/  # WildRGB-D pseudo-GT volume benchmark
   methods/         # convex_hull, tsdf, voxel_carving
   prepare_dataset.py
   run_eval.py
   run_batch_eval.py
+  run_foundationstereo_benchmark.py
 tests/
 ```
 

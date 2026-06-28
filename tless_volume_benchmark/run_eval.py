@@ -27,19 +27,38 @@ def run_eval(
     voxel_size: float = 0.0025,
     repair_mesh: bool = False,
 ) -> list[dict]:
+    print(f"Loading scan: {scan_dir}", flush=True)
     scan = load_prepared_scan(scan_dir)
+    print(f"  {len(scan.frames)} frames, gt={scan.gt_volume.get('volume_cm3')} cm³", flush=True)
+
     results = []
     for name in methods:
         if name not in METHODS:
             raise ValueError(f"Unknown method: {name}. Choose from {list(METHODS)}")
+        print(f"Running {name}...", flush=True)
         kwargs = {}
         if name == "tsdf":
             kwargs = dict(voxel_length=voxel_length, sdf_trunc=sdf_trunc, repair_mesh=repair_mesh)
         elif name == "voxel_carving":
             kwargs = dict(voxel_size=voxel_size)
-        report = METHODS[name](scan_dir, **kwargs)
-        status = "ok" if report.get("volume_m3") is not None else report.get("status", "failed")
-        results.append({**report, "status": status})
+        try:
+            report = METHODS[name](scan_dir, **kwargs)
+            status = "ok" if report.get("volume_m3") is not None else report.get("status", "failed")
+            results.append({**report, "status": status})
+            print(f"  {name} done ({status})", flush=True)
+        except Exception as exc:
+            print(f"  {name} FAILED: {exc}", flush=True)
+            results.append(
+                {
+                    "method": name,
+                    "scan_dir": str(scan_dir),
+                    "status": "failed",
+                    "error": str(exc),
+                    "volume_m3": None,
+                    "volume_cm3": None,
+                    "relative_error_percent": None,
+                }
+            )
 
     out_dir = Path(scan_dir) / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)

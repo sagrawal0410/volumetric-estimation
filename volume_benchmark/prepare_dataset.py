@@ -17,6 +17,7 @@ from volume_benchmark.common.mesh_volume import (
 )
 from volume_benchmark.datasets.bop_adapter import prepare_bop_scan
 from volume_benchmark.datasets.ycb_adapter import prepare_ycb_scan
+from volume_benchmark.stereo.stereo_dataset_adapter import validate_prepared_stereo_scan
 
 
 def _parse_frame_triplets(raw_frames: list[list[str]]) -> list[tuple[Path, Path, Path]]:
@@ -105,6 +106,60 @@ def _prepare_mesh_only(args: argparse.Namespace) -> Path:
     return output_dir
 
 
+def _prepare_stereo_rendered(args: argparse.Namespace) -> Path:
+    dataset = args.dataset
+    if dataset in ("bop_stereo_rendered", "tless_stereo_rendered"):
+        from volume_benchmark.datasets.tless_stereo_adapter import prepare_tless_stereo_rendered
+
+        if args.dataset_root is None or args.object_id is None:
+            raise ValueError(f"{dataset} requires --dataset_root and --object_id")
+        return prepare_tless_stereo_rendered(
+            dataset_root=args.dataset_root,
+            split=args.split,
+            object_id=args.object_id,
+            out_dir=args.out_dir,
+            baseline_m=args.baseline_m,
+            num_views=args.num_views,
+            min_visib_fract=args.min_visib_fract,
+        )
+    if dataset == "ycb_stereo_rendered":
+        from volume_benchmark.datasets.ycb_stereo_adapter import prepare_ycb_stereo_rendered
+
+        if args.object_root is None:
+            raise ValueError("ycb_stereo_rendered requires --object_root")
+        return prepare_ycb_stereo_rendered(
+            object_root=args.object_root,
+            out_dir=args.out_dir,
+            baseline_m=args.baseline_m,
+            num_views=args.num_views,
+        )
+    if dataset == "wildrgbd_stereo_rendered":
+        from volume_benchmark.datasets.wildrgbd_stereo_adapter import prepare_wildrgbd_stereo_rendered
+
+        if args.prepared_scene_dir is None:
+            raise ValueError(
+                "wildrgbd_stereo_rendered requires --prepared_scene_dir "
+                "(from wildrgbd_volume_benchmark.prepare_scene)"
+            )
+        return prepare_wildrgbd_stereo_rendered(
+            prepared_scene_dir=args.prepared_scene_dir,
+            out_dir=args.out_dir,
+            baseline_m=args.baseline_m,
+        )
+    if dataset == "bigbird_stereo_rendered":
+        from volume_benchmark.datasets.bigbird_stereo_adapter import prepare_bigbird_stereo_rendered
+
+        if args.object_root is None:
+            raise ValueError("bigbird_stereo_rendered requires --object_root")
+        return prepare_bigbird_stereo_rendered(
+            object_root=args.object_root,
+            out_dir=args.out_dir,
+            baseline_m=args.baseline_m,
+            num_views=args.num_views,
+        )
+    raise ValueError(f"Unknown stereo dataset: {dataset}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare normalized volume-benchmark scan directories from raw datasets."
@@ -128,6 +183,32 @@ def build_parser() -> argparse.ArgumentParser:
     mesh_only.add_argument("--mesh-units", choices=["m", "mm", "auto"], default="auto")
     mesh_only.add_argument("--repair-mesh", action="store_true")
 
+    stereo = sub.add_parser(
+        "render-stereo",
+        help="Prepare rendered stereo scan for FoundationStereo benchmarking",
+    )
+    stereo.add_argument(
+        "--dataset",
+        required=True,
+        choices=[
+            "bop_stereo_rendered",
+            "tless_stereo_rendered",
+            "ycb_stereo_rendered",
+            "wildrgbd_stereo_rendered",
+            "bigbird_stereo_rendered",
+        ],
+    )
+    stereo.add_argument("--dataset_root", type=Path, default=None)
+    stereo.add_argument("--split", default="test_primesense")
+    stereo.add_argument("--object_id", type=int, default=None)
+    stereo.add_argument("--object_root", type=Path, default=None)
+    stereo.add_argument("--prepared_scene_dir", type=Path, default=None)
+    stereo.add_argument("--num_views", type=int, default=5)
+    stereo.add_argument("--baseline_m", type=float, default=0.12)
+    stereo.add_argument("--min_visib_fract", type=float, default=0.5)
+    stereo.add_argument("--out_dir", type=Path, required=True)
+    stereo.add_argument("--validate", action="store_true")
+
     return parser
 
 
@@ -140,6 +221,15 @@ def main(argv: list[str] | None = None) -> int:
             out = _prepare_from_manifest(_load_manifest(args.manifest))
         elif args.command == "mesh-gt":
             out = _prepare_mesh_only(args)
+        elif args.command == "render-stereo":
+            out = _prepare_stereo_rendered(args)
+            if getattr(args, "validate", False):
+                errors = validate_prepared_stereo_scan(out)
+                if errors:
+                    print(f"Stereo validation failed for {out}:", file=sys.stderr)
+                    for err in errors:
+                        print(f"  - {err}", file=sys.stderr)
+                    return 1
         else:
             parser.error(f"Unknown command: {args.command}")
             return 2

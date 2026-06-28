@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,64 @@ def pseudo_gt_comparison_fields(scene: PreparedScene, volume_m3: float | None) -
         "pseudo_gt_volume_cm3": gt_cm3,
         "relative_error_percent": rel,
     }
+
+
+def export_sampled_as_volume_benchmark_scan(
+    prepared_scene_dir: str | Path,
+    out_dir: str | Path,
+) -> Path:
+    """Export WildRGB-D sampled views to volume_benchmark prepared scan format."""
+    import shutil
+
+    from volume_benchmark.common.io import Frame, save_prepared_scan
+
+    scene = load_prepared_scene(prepared_scene_dir)
+    gt_mesh = scene.scene_dir / "pseudo_gt" / "full_tsdf_mesh.ply"
+    if not gt_mesh.is_file():
+        raise FileNotFoundError(
+            f"Missing pseudo_gt/full_tsdf_mesh.ply under {scene.scene_dir}. "
+            "Dataset-depth baseline requires a mesh from prepare_scene."
+        )
+
+    out = Path(out_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(gt_mesh, out / "gt_mesh.ply")
+    gt_json = scene.scene_dir / "pseudo_gt" / "pseudo_gt_volume.json"
+    with gt_json.open("r", encoding="utf-8") as f:
+        pg = json.load(f)
+    gt_volume = {
+        "volume_m3": pg.get("volume_m3"),
+        "volume_cm3": pg.get("volume_cm3"),
+        "gt_type": pg.get("gt_type", "full_video_reconstruction_pseudo_gt"),
+        "watertight": bool(pg.get("watertight", False)),
+        "exact_gt": bool(pg.get("exact_gt", False)),
+        "source_mesh": str(gt_mesh),
+    }
+    with (out / "gt_volume.json").open("w", encoding="utf-8") as f:
+        json.dump(gt_volume, f, indent=2)
+
+    K_ref = scene.frames[0].K
+    frames: list[Frame] = []
+    for sf in scene.frames:
+        prov = dict(sf.meta)
+        prov["depth_source"] = "wildrgbd_dataset"
+        frames.append(
+            Frame(
+                depth_m=sf.depth_m,
+                mask=sf.mask,
+                T_cam_to_object=sf.T_cam_to_object,
+                source_info=prov,
+            )
+        )
+
+    meta = {
+        "dataset": "wildrgbd",
+        "category": scene.category,
+        "scene_id": scene.scene_id,
+        "depth_source": "dataset_provided",
+        "prepared_scene_dir": str(scene.scene_dir),
+    }
+    return save_prepared_scan(out, K_ref, frames, out / "gt_mesh.ply", metadata=meta)
 
 
 def resolve_output_dir(scene_dir: Path, method: str, output_dir: Path | None) -> Path:
