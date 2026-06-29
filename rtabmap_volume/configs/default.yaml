@@ -1,0 +1,54 @@
+mode: object_or_pile
+reconstruct_mesh_from_cloud: true
+run_poisson: true
+run_bpa: true
+run_alpha_shape: true
+
+denoise:
+  enable_statistical: true
+  statistical_nb_neighbors: 20
+  statistical_std_ratio: 2.0
+  enable_radius: true
+  radius_nb_points: 16
+  radius_search_m: 0.05
+
+plane_removal:
+  distance_threshold_m: 0.01
+  ransac_n: 3
+  num_iterations: 1000
+  min_plane_inlier_ratio: 0.05
+
+clustering:
+  eps_m: 0.05
+  min_points: 50
+  choose_cluster: largest
+
+segmentation:
+  mode: none
+  height_above_plane_threshold_m: 0.02
+
+poisson:
+  depth: 9
+  density_quantile: 0.01
+
+voxel:
+  voxel_sizes_m: [0.005, 0.01]
+
+heightfield:
+  grid_resolution_m: 0.01
+  height_stat: p95
+
+consensus:
+  pile_mode: false
+  estimator_priority:
+    - direct_mesh_volume
+    - repaired_mesh_volume
+    - voxel_occupancy_volume
+    - alpha_shape_volume
+    - convex_hull_volume
+
+output:
+  save_intermediates: true
+  generate_html_report: true
+  generate_screenshots: true
+  seed: 42

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtabmap-volume"
+version = "0.1.0"
+description = "Post-processing pipeline for RTAB-Map geometry volume estimation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "open3d>=0.17",
+  "trimesh>=4.0",
+  "scikit-image>=0.22",
+  "scikit-learn>=1.3",
+  "pandas>=2.0",
+  "matplotlib>=3.7",
+  "PyYAML>=6.0",
+  "rich>=13.0",
+  "tqdm>=4.65",
+  "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pymeshlab"]
+viz = ["plotly"]
+
+[project.scripts]
+rtabmap-estimate-volume = "rtabmap_volume.scripts.estimate_volume:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rtabmap_volume*"]
+
+[tool.pytest.ini_options]
+testpaths = ["rtabmap_volume/tests"]
+pythonpath = ["."]

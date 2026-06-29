@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Literal
+
+FAST_FS_REPO_URL = "https://github.com/NVlabs/Fast-FoundationStereo"
+FOUNDATION_STEREO_REPO_URL = "https://github.com/NVlabs/FoundationStereo"
 
 StereoBackendName = Literal["foundation_stereo", "fast_foundation_stereo"]
 
@@ -11,9 +15,49 @@ FOUNDATION_STEREO_CKPT_NAMES = ("model_best_bp2.pth",)
 FAST_FS_CKPT_NAMES = ("model_best_bp2_serialize.pth",)
 
 
+def resolve_repo_path(repo: Path) -> Path:
+    """Expand ``~`` and normalize a stereo repo path."""
+    return repo.expanduser().resolve()
+
+
+def prepare_stereo_repo(repo: Path, *, backend: StereoBackendName | None = None) -> Path:
+    """
+    Validate a FoundationStereo / Fast-FoundationStereo clone and prepend it to ``sys.path``.
+
+    Raises ``FileNotFoundError`` with clone instructions when the repo is missing or incomplete
+    (e.g. only weights were downloaded without ``core/``).
+    """
+    repo = resolve_repo_path(repo)
+    if not repo.is_dir():
+        raise FileNotFoundError(
+            f"Stereo repo not found: {repo}\n"
+            f"Clone Fast-FoundationStereo: git clone {FAST_FS_REPO_URL} ~/Fast-FoundationStereo"
+        )
+
+    core_pkg = repo / "core" / "utils" / "utils.py"
+    if not core_pkg.is_file():
+        hint = FAST_FS_REPO_URL if backend != "foundation_stereo" else FOUNDATION_STEREO_REPO_URL
+        raise FileNotFoundError(
+            f"Incomplete stereo repo at {repo}: missing {core_pkg.relative_to(repo)}.\n"
+            f"This usually means only weights were copied, not the full git clone.\n"
+            f"Clone the repo: git clone {hint} {repo}"
+        )
+
+    if backend == "fast_foundation_stereo" and not (repo / "Utils.py").is_file():
+        raise FileNotFoundError(
+            f"Incomplete Fast-FoundationStereo repo at {repo}: missing Utils.py.\n"
+            f"Clone the full repo: git clone {FAST_FS_REPO_URL} {repo}"
+        )
+
+    repo_str = str(repo)
+    if repo_str not in sys.path:
+        sys.path.insert(0, repo_str)
+    return repo
+
+
 def is_fast_foundation_stereo_repo(repo: Path) -> bool:
     """True if repo looks like NVlabs/Fast-FoundationStereo (not classic FoundationStereo)."""
-    repo = repo.resolve()
+    repo = resolve_repo_path(repo)
     run_demo = repo / "scripts" / "run_demo.py"
     if not run_demo.exists():
         return False
@@ -22,7 +66,7 @@ def is_fast_foundation_stereo_repo(repo: Path) -> bool:
 
 
 def is_classic_foundation_stereo_repo(repo: Path) -> bool:
-    repo = repo.resolve()
+    repo = resolve_repo_path(repo)
     run_demo = repo / "scripts" / "run_demo.py"
     if not run_demo.exists():
         return False

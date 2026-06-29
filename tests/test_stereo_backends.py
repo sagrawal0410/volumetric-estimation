@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -11,8 +12,10 @@ from volrecon.stereo.foundation_stereo_wrapper import FoundationStereoConfig, Fo
 from volrecon.stereo.stereo_backends import (
     detect_stereo_backend,
     is_fast_foundation_stereo_repo,
+    prepare_stereo_repo,
     require_cfg_yaml,
     resolve_checkpoint_path,
+    resolve_repo_path,
 )
 
 
@@ -60,6 +63,31 @@ def test_require_cfg_yaml_raises(tmp_path: Path):
     ckpt.touch()
     with pytest.raises(FileNotFoundError, match="cfg.yaml"):
         require_cfg_yaml(ckpt)
+
+
+def test_resolve_repo_path_expands_tilde(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    nested = tmp_path / "Fast-FoundationStereo"
+    nested.mkdir()
+    assert resolve_repo_path(Path("~/Fast-FoundationStereo")) == nested.resolve()
+
+
+def test_prepare_stereo_repo_requires_core_package(tmp_path: Path):
+    repo = tmp_path / "Fast-FoundationStereo"
+    repo.mkdir()
+    (repo / "Utils.py").write_text("AMP_DTYPE = None\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="core/utils/utils.py"):
+        prepare_stereo_repo(repo, backend="fast_foundation_stereo")
+
+
+def test_prepare_stereo_repo_adds_repo_to_sys_path(tmp_path: Path):
+    repo = tmp_path / "Fast-FoundationStereo"
+    (repo / "core" / "utils").mkdir(parents=True)
+    (repo / "core" / "utils" / "utils.py").write_text("class InputPadder: pass\n", encoding="utf-8")
+    (repo / "Utils.py").write_text("AMP_DTYPE = None\n", encoding="utf-8")
+    resolved = prepare_stereo_repo(repo, backend="fast_foundation_stereo")
+    assert resolved == repo.resolve()
+    assert str(resolved) in sys.path
 
 
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):

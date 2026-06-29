@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from volrecon.stereo.confidence import apply_depth_mask, build_valid_depth_mask
 from volrecon.stereo.stereo_backends import (
     StereoBackendName,
     detect_stereo_backend,
+    prepare_stereo_repo,
     require_cfg_yaml,
     resolve_checkpoint_path,
 )
@@ -84,13 +86,19 @@ class FoundationStereoWrapper:
         if not self.repo.exists():
             return False
         try:
-            if str(self.repo) not in sys.path:
-                sys.path.insert(0, str(self.repo))
+            prepare_stereo_repo(self.repo, backend="foundation_stereo")
             import core.foundation_stereo  # noqa: F401, WPS433
 
             return True
         except Exception:  # noqa: BLE001
             return False
+
+    def _stereo_subprocess_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        repo = str(self.repo)
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = repo if not existing else f"{repo}{os.pathsep}{existing}"
+        return env
 
     def validate_view(self, view: ViewRecord) -> None:
         if not foundation_stereo_usable(view):
@@ -244,7 +252,7 @@ class FoundationStereoWrapper:
             str(self.cfg.hiera),
         ]
         logger.info("Running Fast-FoundationStereo subprocess: %s", " ".join(cmd))
-        subprocess.run(cmd, check=True, cwd=str(self.repo))
+        subprocess.run(cmd, check=True, cwd=str(self.repo), env=self._stereo_subprocess_env())
         return self._load_disparity(out_dir)
 
     def _run_classic_subprocess(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
@@ -280,7 +288,7 @@ class FoundationStereoWrapper:
             cmd[-1] = "1"
 
         logger.info("Running FoundationStereo subprocess: %s", " ".join(cmd))
-        subprocess.run(cmd, cwd=str(self.repo), check=True)
+        subprocess.run(cmd, cwd=str(self.repo), check=True, env=self._stereo_subprocess_env())
         return self._load_disparity(out_dir)
 
     def _load_disparity(self, out_dir: Path) -> np.ndarray:
@@ -299,9 +307,7 @@ class FoundationStereoWrapper:
         raise FileNotFoundError(f"Disparity output not found in {out_dir}")
 
     def _run_classic_python_api(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
-        repo = str(self.repo)
-        if repo not in sys.path:
-            sys.path.insert(0, repo)
+        prepare_stereo_repo(self.repo, backend="foundation_stereo")
 
         import torch  # noqa: WPS433
         from core.foundation_stereo import FoundationStereo  # noqa: WPS433

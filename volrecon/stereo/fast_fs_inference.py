@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 import cv2
@@ -14,15 +13,6 @@ import torch
 import yaml
 
 logger = logging.getLogger(__name__)
-
-
-def _prepare_repo(repo: Path) -> None:
-    repo = repo.resolve()
-    if not repo.exists():
-        raise FileNotFoundError(f"Fast-FoundationStereo repo not found: {repo}")
-    repo_str = str(repo)
-    if repo_str not in sys.path:
-        sys.path.insert(0, repo_str)
 
 
 def run_fast_fs_inference(
@@ -43,13 +33,17 @@ def run_fast_fs_inference(
     Images are resized when ``scale != 1``. When volrecon has already scaled inputs,
     pass ``scale=1.0``.
     """
-    from volrecon.stereo.stereo_backends import require_cfg_yaml
+    from volrecon.stereo.stereo_backends import prepare_stereo_repo, require_cfg_yaml, resolve_repo_path
 
-    model_path = model_path.resolve()
+    repo = resolve_repo_path(repo)
+    model_path = model_path.expanduser().resolve()
+    left_path = left_path.expanduser().resolve()
+    right_path = right_path.expanduser().resolve()
+    out_dir = out_dir.expanduser().resolve()
     require_cfg_yaml(model_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    _prepare_repo(repo)
+    prepare_stereo_repo(repo, backend="fast_foundation_stereo")
     from core.utils.utils import InputPadder  # noqa: WPS433
     from Utils import AMP_DTYPE  # noqa: WPS433
 
@@ -133,10 +127,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     run_fast_fs_inference(
         args.repo,
-        args.model_dir,
-        args.left_file,
-        args.right_file,
-        args.out_dir,
+        args.model_dir.expanduser().resolve(),
+        args.left_file.expanduser().resolve(),
+        args.right_file.expanduser().resolve(),
+        args.out_dir.expanduser().resolve(),
         valid_iters=args.valid_iters,
         max_disp=args.max_disp,
         scale=args.scale,

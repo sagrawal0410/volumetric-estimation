@@ -1,0 +1,44 @@
+mode: object_or_pile
+reconstruct_mesh_from_cloud: true
+run_poisson: true
+run_bpa: true
+run_alpha_shape: true
+
+denoise:
+  enable_statistical: true
+  statistical_nb_neighbors: 30
+  statistical_std_ratio: 2.0
+  enable_radius: true
+  radius_nb_points: 20
+  radius_search_m: 0.04
+
+poisson:
+  depth: 10
+  density_quantile: 0.005
+
+voxel:
+  voxel_sizes_m: [0.001, 0.002, 0.003, 0.005, 0.01]
+
+heightfield:
+  grid_resolution_m: 0.005
+  height_stat: p95
+
+mesh_repair:
+  use_pymeshlab: true
+
+consensus:
+  pile_mode: false
+  estimator_priority:
+    - direct_mesh_volume
+    - repaired_mesh_volume
+    - poisson_mesh_volume
+    - voxel_occupancy_volume
+    - alpha_shape_volume
+    - heightfield_volume
+    - convex_hull_volume
+
+output:
+  save_intermediates: true
+  generate_html_report: true
+  generate_screenshots: true
+  seed: 42

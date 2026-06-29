@@ -1,0 +1,25 @@
+mode: object_or_pile
+reconstruct_mesh_from_cloud: true
+run_poisson: true
+run_bpa: false
+run_alpha_shape: false
+
+denoise:
+  enable_statistical: true
+  statistical_nb_neighbors: 15
+  statistical_std_ratio: 2.5
+  enable_radius: false
+  voxel_downsample_m: 0.01
+
+voxel:
+  voxel_sizes_m: [0.01, 0.02]
+
+poisson:
+  depth: 7
+  density_quantile: 0.05
+
+output:
+  save_intermediates: true
+  generate_html_report: true
+  generate_screenshots: false
+  seed: 42
