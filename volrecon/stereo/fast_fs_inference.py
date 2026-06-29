@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import os
 import platform
 
@@ -10,6 +11,7 @@ if platform.machine().lower() in {"aarch64", "arm64"}:
     os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
 
 import argparse
+import json
 import logging
 from pathlib import Path
 
@@ -26,6 +28,12 @@ _FAST_FS_COMPILED_KERNELS = (
     "build_concat_volume_optimized_pytorch1",
     "build_concat_volume_optimized_pytorch",
 )
+
+_JETSON_DEFAULT_SCALE = 0.5
+
+
+def _embedded_gpu() -> bool:
+    return platform.machine().lower() in {"aarch64", "arm64"}
 
 
 def _triton_usable() -> bool:
@@ -93,6 +101,71 @@ def _patch_fast_fs_compiled_kernels() -> None:
                 setattr(mod, name, _unwrap_torch_compiled(getattr(mod, name)))
 
 
+def _set_model_arg(model, name: str, value) -> None:
+    args = getattr(model, "args", None)
+    if args is None:
+        return
+    if isinstance(args, dict):
+        args[name] = value
+    elif hasattr(args, "__setitem__"):
+        try:
+            args[name] = value
+        except Exception:  # noqa: BLE001
+            setattr(args, name, value)
+    else:
+        setattr(args, name, value)
+
+
+def _resolve_inference_scale(scale: float, *, force_full_resolution: bool) -> float:
+    if force_full_resolution or not _embedded_gpu() or scale < 1.0:
+        return scale
+    if scale >= 1.0:
+        logger.warning(
+            "Jetson/embedded GPU detected: overriding --scale %.2f -> %.1f to avoid OOM. "
+            "Pass --force-full-resolution to keep full resolution (may be killed by the OOM killer).",
+            scale,
+            _JETSON_DEFAULT_SCALE,
+        )
+        return _JETSON_DEFAULT_SCALE
+    return scale
+
+
+def _load_rgb_pair(left_path: Path, right_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    img0 = imageio.imread(left_path)
+    img1 = imageio.imread(right_path)
+    if img0.ndim == 2:
+        img0 = np.tile(img0[..., None], (1, 1, 3))
+    if img1.ndim == 2:
+        img1 = np.tile(img1[..., None], (1, 1, 3))
+    return img0[..., :3], img1[..., :3]
+
+
+def _resize_stereo_pair(img0: np.ndarray, img1: np.ndarray, scale: float) -> tuple[np.ndarray, np.ndarray]:
+    if scale == 1.0:
+        return img0, img1
+    img0 = cv2.resize(img0, fx=scale, fy=scale, dsize=None)
+    img1 = cv2.resize(img1, dsize=(img0.shape[1], img0.shape[0]))
+    return img0, img1
+
+
+def _load_fast_fs_model(model_path: Path):
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Fast-FoundationStereo inference requires CUDA. "
+            "On Jetson, install PyTorch from https://pypi.jetson-ai-lab.io/jp6/cu126"
+        )
+    map_location = "cuda" if _embedded_gpu() else "cpu"
+    logger.info("Loading Fast-FS checkpoint: %s (map_location=%s)", model_path, map_location)
+    model = torch.load(model_path, map_location=map_location, weights_only=False)
+    if map_location == "cpu":
+        model = model.cuda()
+    model.eval()
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return model
+
+
 def run_fast_fs_inference(
     repo: Path,
     model_path: Path,
@@ -104,7 +177,9 @@ def run_fast_fs_inference(
     max_disp: int = 192,
     scale: float = 1.0,
     hiera: int = 0,
+    low_memory: bool | None = None,
     allow_torch_compile: bool = False,
+    force_full_resolution: bool = False,
 ) -> np.ndarray:
     """
     Run Fast-FoundationStereo forward pass and save ``disparity.npy`` under ``out_dir``.
@@ -113,6 +188,9 @@ def run_fast_fs_inference(
     pass ``scale=1.0``.
     """
     from volrecon.stereo.stereo_backends import prepare_stereo_repo, require_cfg_yaml, resolve_repo_path
+
+    if low_memory is None:
+        low_memory = _embedded_gpu()
 
     _disable_torch_compile(force=not allow_torch_compile)
 
@@ -124,6 +202,8 @@ def run_fast_fs_inference(
     require_cfg_yaml(model_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    scale = _resolve_inference_scale(scale, force_full_resolution=force_full_resolution)
+
     prepare_stereo_repo(repo, backend="fast_foundation_stereo")
     import core.submodule  # noqa: F401, WPS433
 
@@ -131,50 +211,40 @@ def run_fast_fs_inference(
     from core.utils.utils import InputPadder  # noqa: WPS433
     from Utils import AMP_DTYPE  # noqa: WPS433
 
-    with (model_path.parent / "cfg.yaml").open("r", encoding="utf-8") as ff:
-        cfg: dict = yaml.safe_load(ff)
-    cfg["valid_iters"] = valid_iters
-    cfg["max_disp"] = max_disp
-    cfg["scale"] = scale
-    cfg["hiera"] = hiera
-
-    if not torch.cuda.is_available():
-        raise RuntimeError(
-            "Fast-FoundationStereo inference requires CUDA. "
-            "On Jetson, install PyTorch from https://pypi.jetson-ai-lab.io/jp6/cu126"
-        )
-
-    model = torch.load(model_path, map_location="cpu", weights_only=False)
-    model.args.valid_iters = valid_iters
-    model.args.max_disp = max_disp
-    model.cuda().eval()
-
-    img0 = imageio.imread(left_path)
-    img1 = imageio.imread(right_path)
-    if img0.ndim == 2:
-        img0 = np.tile(img0[..., None], (1, 1, 3))
-    if img1.ndim == 2:
-        img1 = np.tile(img1[..., None], (1, 1, 3))
-    img0 = img0[..., :3]
-    img1 = img1[..., :3]
-
-    if scale != 1.0:
-        img0 = cv2.resize(img0, fx=scale, fy=scale, dsize=None)
-        img1 = cv2.resize(img1, dsize=(img0.shape[1], img0.shape[0]))
+    img0, img1 = _load_rgb_pair(left_path, right_path)
+    img0, img1 = _resize_stereo_pair(img0, img1, scale)
     h, w = img0.shape[:2]
+    logger.info(
+        "Fast-FS inference: shape=%dx%d scale=%.2f valid_iters=%d max_disp=%d low_memory=%s",
+        w,
+        h,
+        scale,
+        valid_iters,
+        max_disp,
+        low_memory,
+    )
 
-    img0_t = torch.as_tensor(img0).cuda().float()[None].permute(0, 3, 1, 2)
-    img1_t = torch.as_tensor(img1).cuda().float()[None].permute(0, 3, 1, 2)
+    model = _load_fast_fs_model(model_path)
+    _set_model_arg(model, "valid_iters", valid_iters)
+    _set_model_arg(model, "max_disp", max_disp)
+    _set_model_arg(model, "low_memory", low_memory)
+
+    img0_t = torch.as_tensor(img0, device="cuda").float()[None].permute(0, 3, 1, 2)
+    img1_t = torch.as_tensor(img1, device="cuda").float()[None].permute(0, 3, 1, 2)
+    del img0, img1
+    gc.collect()
+
     padder = InputPadder(img0_t.shape, divis_by=32, force_square=False)
     img0_t, img1_t = padder.pad(img0_t, img1_t)
 
-    with torch.amp.autocast("cuda", enabled=True, dtype=AMP_DTYPE):
+    with torch.inference_mode(), torch.amp.autocast("cuda", enabled=True, dtype=AMP_DTYPE):
         if not hiera:
             disp = model.forward(
                 img0_t,
                 img1_t,
                 iters=valid_iters,
                 test_mode=True,
+                low_memory=low_memory,
                 optimize_build_volume="pytorch1",
             )
         else:
@@ -183,6 +253,7 @@ def run_fast_fs_inference(
                 img1_t,
                 iters=valid_iters,
                 test_mode=True,
+                low_memory=low_memory,
                 small_ratio=0.5,
             )
 
@@ -191,6 +262,17 @@ def run_fast_fs_inference(
 
     np.save(out_dir / "disparity.npy", disp_np.astype(np.float32))
     np.save(out_dir / "disparity_raw.npy", disp_np.astype(np.float32))
+    meta = {
+        "scale": scale,
+        "valid_iters": valid_iters,
+        "max_disp": max_disp,
+        "low_memory": low_memory,
+        "shape": [h, w],
+    }
+    (out_dir / "fast_fs_meta.json").write_text(
+        json.dumps(meta, indent=2),
+        encoding="utf-8",
+    )
     logger.info("Fast-FS disparity saved: %s shape=%s", out_dir / "disparity.npy", disp_np.shape)
     return disp_np
 
@@ -202,10 +284,34 @@ def main() -> None:
     parser.add_argument("--left_file", required=True, type=Path)
     parser.add_argument("--right_file", required=True, type=Path)
     parser.add_argument("--out_dir", required=True, type=Path)
-    parser.add_argument("--valid_iters", type=int, default=8)
+    parser.add_argument("--valid_iters", type=int, default=4 if _embedded_gpu() else 8)
     parser.add_argument("--max_disp", type=int, default=192)
-    parser.add_argument("--scale", type=float, default=1.0)
+    default_scale = _JETSON_DEFAULT_SCALE if _embedded_gpu() else 1.0
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=default_scale,
+        help=f"Image resize factor before inference (default {default_scale} on Jetson).",
+    )
     parser.add_argument("--hiera", type=int, default=0)
+    parser.add_argument(
+        "--low-memory",
+        dest="low_memory",
+        action="store_true",
+        default=_embedded_gpu(),
+        help="Use Fast-FS low_memory forward path (default on Jetson).",
+    )
+    parser.add_argument(
+        "--no-low-memory",
+        dest="low_memory",
+        action="store_false",
+        help="Disable Fast-FS low_memory path.",
+    )
+    parser.add_argument(
+        "--force-full-resolution",
+        action="store_true",
+        help="Do not auto-downscale on Jetson (may OOM).",
+    )
     parser.add_argument(
         "--allow-torch-compile",
         action="store_true",
@@ -229,7 +335,9 @@ def main() -> None:
         max_disp=args.max_disp,
         scale=args.scale,
         hiera=args.hiera,
+        low_memory=args.low_memory,
         allow_torch_compile=args.allow_torch_compile and not args.eager,
+        force_full_resolution=args.force_full_resolution,
     )
 
 

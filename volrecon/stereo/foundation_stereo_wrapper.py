@@ -228,6 +228,7 @@ class FoundationStereoWrapper:
             max_disp=self.cfg.max_disp,
             scale=1.0,
             hiera=self.cfg.hiera,
+            low_memory=platform.machine().lower() in {"aarch64", "arm64"},
         )
 
     def _run_fast_fs_subprocess(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
@@ -254,6 +255,8 @@ class FoundationStereoWrapper:
             "--hiera",
             str(self.cfg.hiera),
         ]
+        if platform.machine().lower() in {"aarch64", "arm64"}:
+            cmd.extend(["--low-memory"])
         logger.info("Running Fast-FoundationStereo subprocess: %s", " ".join(cmd))
         subprocess.run(cmd, check=True, cwd=str(self.repo), env=self._stereo_subprocess_env())
         return self._load_disparity(out_dir)

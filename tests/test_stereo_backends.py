@@ -102,6 +102,15 @@ def test_disable_torch_compile_disables_dynamo(monkeypatch: pytest.MonkeyPatch):
     assert fast_fs_inference._unwrap_torch_compiled(torch.compile(fn)) is fn
 
 
+def test_resolve_inference_scale_downscales_on_jetson(monkeypatch: pytest.MonkeyPatch):
+    from volrecon.stereo import fast_fs_inference
+
+    monkeypatch.setattr(fast_fs_inference, "_embedded_gpu", lambda: True)
+    assert fast_fs_inference._resolve_inference_scale(1.0, force_full_resolution=False) == 0.5
+    assert fast_fs_inference._resolve_inference_scale(0.5, force_full_resolution=False) == 0.5
+    assert fast_fs_inference._resolve_inference_scale(1.0, force_full_resolution=True) == 1.0
+
+
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
     repo = tmp_path / "Fast-FoundationStereo"
     weights = repo / "weights" / "20-30-48"
