@@ -149,3 +149,7 @@ def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
             assert "volrecon.stereo.fast_fs_inference" in cmd
             assert "--model_dir" in cmd
             assert str(ckpt) in cmd
+            assert run_mock.call_args.kwargs["cwd"] == str(cfg.project_root)
+            env = run_mock.call_args.kwargs["env"]
+            assert str(cfg.project_root) in env["PYTHONPATH"]
+            assert str(repo) in env["PYTHONPATH"]

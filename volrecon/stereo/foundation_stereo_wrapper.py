@@ -94,11 +94,14 @@ class FoundationStereoWrapper:
         except Exception:  # noqa: BLE001
             return False
 
-    def _stereo_subprocess_env(self) -> dict[str, str]:
+    def _stereo_subprocess_env(self, *, include_volrecon: bool = False) -> dict[str, str]:
         env = os.environ.copy()
-        repo = str(self.repo)
+        pythonpath_parts = [str(self.repo)]
+        if include_volrecon:
+            pythonpath_parts.insert(0, str(self.cfg.project_root))
+        joined = os.pathsep.join(pythonpath_parts)
         existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = repo if not existing else f"{repo}{os.pathsep}{existing}"
+        env["PYTHONPATH"] = joined if not existing else f"{joined}{os.pathsep}{existing}"
         if platform.machine().lower() in {"aarch64", "arm64"}:
             env["TORCHDYNAMO_DISABLE"] = "1"
         return env
@@ -232,6 +235,9 @@ class FoundationStereoWrapper:
         )
 
     def _run_fast_fs_subprocess(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
+        left_path = left_path.expanduser().resolve()
+        right_path = right_path.expanduser().resolve()
+        out_dir = out_dir.expanduser().resolve()
         cmd = [
             self._python,
             "-m",
@@ -258,10 +264,18 @@ class FoundationStereoWrapper:
         if platform.machine().lower() in {"aarch64", "arm64"}:
             cmd.extend(["--low-memory"])
         logger.info("Running Fast-FoundationStereo subprocess: %s", " ".join(cmd))
-        subprocess.run(cmd, check=True, cwd=str(self.repo), env=self._stereo_subprocess_env())
+        subprocess.run(
+            cmd,
+            check=True,
+            cwd=str(self.cfg.project_root),
+            env=self._stereo_subprocess_env(include_volrecon=True),
+        )
         return self._load_disparity(out_dir)
 
     def _run_classic_subprocess(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
+        left_path = left_path.expanduser().resolve()
+        right_path = right_path.expanduser().resolve()
+        out_dir = out_dir.expanduser().resolve()
         demo = self.repo / "scripts" / "run_demo.py"
         if not demo.exists():
             demo = self.repo / "run_demo.py"
