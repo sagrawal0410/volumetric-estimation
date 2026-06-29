@@ -122,7 +122,7 @@ def test_resolve_inference_scale_downscales_on_jetson(monkeypatch: pytest.Monkey
 
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
     repo = tmp_path / "Fast-FoundationStereo"
-    weights = repo / "weights" / "20-30-48"
+    weights = repo / "weights" / "26-39-47"
     weights.mkdir(parents=True)
     ckpt = weights / "model_best_bp2_serialize.pth"
     ckpt.write_text("", encoding="utf-8")
