@@ -106,9 +106,18 @@ def test_resolve_inference_scale_downscales_on_jetson(monkeypatch: pytest.Monkey
     from volrecon.stereo import fast_fs_inference
 
     monkeypatch.setattr(fast_fs_inference, "_embedded_gpu", lambda: True)
-    assert fast_fs_inference._resolve_inference_scale(1.0, force_full_resolution=False) == 0.5
-    assert fast_fs_inference._resolve_inference_scale(0.5, force_full_resolution=False) == 0.5
-    assert fast_fs_inference._resolve_inference_scale(1.0, force_full_resolution=True) == 1.0
+    assert fast_fs_inference._resolve_inference_scale(
+        1.0, force_full_resolution=False, pre_scaled=False
+    ) == 0.5
+    assert fast_fs_inference._resolve_inference_scale(
+        0.5, force_full_resolution=False, pre_scaled=False
+    ) == 0.5
+    assert fast_fs_inference._resolve_inference_scale(
+        1.0, force_full_resolution=True, pre_scaled=False
+    ) == 1.0
+    assert fast_fs_inference._resolve_inference_scale(
+        1.0, force_full_resolution=False, pre_scaled=True
+    ) == 1.0
 
 
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
@@ -147,6 +156,7 @@ def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
             cmd = run_mock.call_args[0][0]
             assert "-m" in cmd
             assert "volrecon.stereo.fast_fs_inference" in cmd
+            assert "--pre-scaled" in cmd
             assert "--model_dir" in cmd
             assert str(ckpt) in cmd
             assert run_mock.call_args.kwargs["cwd"] == str(cfg.project_root)

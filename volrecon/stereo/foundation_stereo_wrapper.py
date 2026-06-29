@@ -232,6 +232,7 @@ class FoundationStereoWrapper:
             scale=1.0,
             hiera=self.cfg.hiera,
             low_memory=platform.machine().lower() in {"aarch64", "arm64"},
+            pre_scaled=True,
         )
 
     def _run_fast_fs_subprocess(self, left_path: Path, right_path: Path, out_dir: Path) -> np.ndarray:
@@ -258,6 +259,7 @@ class FoundationStereoWrapper:
             str(self.cfg.max_disp),
             "--scale",
             "1.0",
+            "--pre-scaled",
             "--hiera",
             str(self.cfg.hiera),
         ]

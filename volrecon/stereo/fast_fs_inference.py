@@ -116,7 +116,14 @@ def _set_model_arg(model, name: str, value) -> None:
         setattr(args, name, value)
 
 
-def _resolve_inference_scale(scale: float, *, force_full_resolution: bool) -> float:
+def _resolve_inference_scale(
+    scale: float,
+    *,
+    force_full_resolution: bool,
+    pre_scaled: bool,
+) -> float:
+    if pre_scaled:
+        return 1.0
     if force_full_resolution or not _embedded_gpu() or scale < 1.0:
         return scale
     if scale >= 1.0:
@@ -180,12 +187,13 @@ def run_fast_fs_inference(
     low_memory: bool | None = None,
     allow_torch_compile: bool = False,
     force_full_resolution: bool = False,
+    pre_scaled: bool = False,
 ) -> np.ndarray:
     """
     Run Fast-FoundationStereo forward pass and save ``disparity.npy`` under ``out_dir``.
 
     Images are resized when ``scale != 1``. When volrecon has already scaled inputs,
-    pass ``scale=1.0``.
+    pass ``pre_scaled=True`` (and ``scale=1.0``).
     """
     from volrecon.stereo.stereo_backends import prepare_stereo_repo, require_cfg_yaml, resolve_repo_path
 
@@ -202,7 +210,11 @@ def run_fast_fs_inference(
     require_cfg_yaml(model_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    scale = _resolve_inference_scale(scale, force_full_resolution=force_full_resolution)
+    scale = _resolve_inference_scale(
+        scale,
+        force_full_resolution=force_full_resolution,
+        pre_scaled=pre_scaled,
+    )
 
     prepare_stereo_repo(repo, backend="fast_foundation_stereo")
     import core.submodule  # noqa: F401, WPS433
@@ -264,6 +276,7 @@ def run_fast_fs_inference(
     np.save(out_dir / "disparity_raw.npy", disp_np.astype(np.float32))
     meta = {
         "scale": scale,
+        "pre_scaled": pre_scaled,
         "valid_iters": valid_iters,
         "max_disp": max_disp,
         "low_memory": low_memory,
@@ -308,6 +321,11 @@ def main() -> None:
         help="Disable Fast-FS low_memory path.",
     )
     parser.add_argument(
+        "--pre-scaled",
+        action="store_true",
+        help="Input images are already resized (skip all scaling; used by volrecon wrapper).",
+    )
+    parser.add_argument(
         "--force-full-resolution",
         action="store_true",
         help="Do not auto-downscale on Jetson (may OOM).",
@@ -338,6 +356,7 @@ def main() -> None:
         low_memory=args.low_memory,
         allow_torch_compile=args.allow_torch_compile and not args.eager,
         force_full_resolution=args.force_full_resolution,
+        pre_scaled=args.pre_scaled,
     )
 
 
