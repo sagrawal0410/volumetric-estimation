@@ -91,16 +91,15 @@ def test_prepare_stereo_repo_adds_repo_to_sys_path(tmp_path: Path):
     assert str(resolved) in sys.path
 
 
-def test_ensure_eager_torch_compile_disables_dynamo(monkeypatch: pytest.MonkeyPatch):
+def test_disable_torch_compile_disables_dynamo(monkeypatch: pytest.MonkeyPatch):
     from volrecon.stereo import fast_fs_inference
 
-    monkeypatch.setattr(fast_fs_inference, "_triton_available", lambda: False)
-    fast_fs_inference._ensure_eager_torch_compile()
+    fast_fs_inference._disable_torch_compile(force=True)
     import torch._dynamo as dynamo
 
     assert dynamo.config.disable is True
-    assert callable(torch.compile)
-    assert torch.compile(lambda x: x) is not None
+    fn = lambda x: x
+    assert fast_fs_inference._unwrap_torch_compiled(torch.compile(fn)) is fn
 
 
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):

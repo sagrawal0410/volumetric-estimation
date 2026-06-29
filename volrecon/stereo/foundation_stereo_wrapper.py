@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -98,6 +99,8 @@ class FoundationStereoWrapper:
         repo = str(self.repo)
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = repo if not existing else f"{repo}{os.pathsep}{existing}"
+        if platform.machine().lower() in {"aarch64", "arm64"}:
+            env["TORCHDYNAMO_DISABLE"] = "1"
         return env
 
     def validate_view(self, view: ViewRecord) -> None:

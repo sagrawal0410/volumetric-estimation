@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import platform
+
+# Jetson/aarch64 PyTorch builds ship without a working Triton stack; disable dynamo early.
+if platform.machine().lower() in {"aarch64", "arm64"}:
+    os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+
 import argparse
 import logging
 from pathlib import Path
@@ -14,8 +21,15 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+_FAST_FS_COMPILED_KERNELS = (
+    "build_gwc_volume_optimized_pytorch1",
+    "build_concat_volume_optimized_pytorch1",
+    "build_concat_volume_optimized_pytorch",
+)
 
-def _triton_available() -> bool:
+
+def _triton_usable() -> bool:
+    """True only when Triton imports and exposes a JIT compiler (desktop CUDA builds)."""
     import importlib.util
 
     if importlib.util.find_spec("triton") is None:
@@ -23,25 +37,36 @@ def _triton_available() -> bool:
     try:
         import triton  # noqa: F401, WPS433
 
-        return True
-    except ImportError:
+        return callable(getattr(triton, "jit", None))
+    except Exception:  # noqa: BLE001
         return False
 
 
-def _ensure_eager_torch_compile(*, force: bool = False) -> None:
-    """
-    Disable ``torch.compile`` when Triton is unavailable (typical on Jetson).
+def _unwrap_torch_compiled(fn):
+    seen: set[int] = set()
+    while id(fn) not in seen:
+        seen.add(id(fn))
+        for attr in ("_orig_mod", "__wrapped__", "_torchdynamo_orig_callable"):
+            nxt = getattr(fn, attr, None)
+            if nxt is not None and callable(nxt):
+                fn = nxt
+                break
+        else:
+            break
+    return fn
 
-    Fast-FoundationStereo decorates GWC/concat volume builders with ``@torch.compile``.
-    Without Triton, the inductor backend fails at first forward pass.
-    Must run before importing Fast-FoundationStereo ``core.*`` modules.
+
+def _disable_torch_compile(*, force: bool) -> None:
     """
-    if not force and _triton_available():
+    Disable ``torch.compile`` for Fast-FoundationStereo inference.
+
+    Fast-FS decorates GWC/concat volume builders with ``@torch.compile``. Without a
+    working Triton install (typical on Jetson), inductor fails on the first forward pass.
+    """
+    if not force and _triton_usable():
         return
 
-    import os
-
-    os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+    os.environ["TORCHDYNAMO_DISABLE"] = "1"
     try:
         import torch._dynamo as dynamo
 
@@ -54,9 +79,18 @@ def _ensure_eager_torch_compile(*, force: bool = False) -> None:
         return fn
 
     torch.compile = _compile_identity  # type: ignore[misc, assignment]
-    logger.info(
-        "Triton unavailable; running Fast-FoundationStereo with eager PyTorch (no torch.compile)."
-    )
+    logger.info("Using eager Fast-FoundationStereo kernels (torch.compile disabled).")
+
+
+def _patch_fast_fs_compiled_kernels() -> None:
+    """Replace already-wrapped compiled kernels with their eager implementations."""
+    import core.foundation_stereo as fs  # noqa: WPS433
+    import core.submodule as sm  # noqa: WPS433
+
+    for mod in (sm, fs):
+        for name in _FAST_FS_COMPILED_KERNELS:
+            if hasattr(mod, name):
+                setattr(mod, name, _unwrap_torch_compiled(getattr(mod, name)))
 
 
 def run_fast_fs_inference(
@@ -70,7 +104,7 @@ def run_fast_fs_inference(
     max_disp: int = 192,
     scale: float = 1.0,
     hiera: int = 0,
-    eager: bool = False,
+    allow_torch_compile: bool = False,
 ) -> np.ndarray:
     """
     Run Fast-FoundationStereo forward pass and save ``disparity.npy`` under ``out_dir``.
@@ -80,7 +114,7 @@ def run_fast_fs_inference(
     """
     from volrecon.stereo.stereo_backends import prepare_stereo_repo, require_cfg_yaml, resolve_repo_path
 
-    _ensure_eager_torch_compile(force=eager)
+    _disable_torch_compile(force=not allow_torch_compile)
 
     repo = resolve_repo_path(repo)
     model_path = model_path.expanduser().resolve()
@@ -91,6 +125,9 @@ def run_fast_fs_inference(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     prepare_stereo_repo(repo, backend="fast_foundation_stereo")
+    import core.submodule  # noqa: F401, WPS433
+
+    _patch_fast_fs_compiled_kernels()
     from core.utils.utils import InputPadder  # noqa: WPS433
     from Utils import AMP_DTYPE  # noqa: WPS433
 
@@ -170,9 +207,14 @@ def main() -> None:
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--hiera", type=int, default=0)
     parser.add_argument(
+        "--allow-torch-compile",
+        action="store_true",
+        help="Allow torch.compile (requires working Triton; not supported on Jetson).",
+    )
+    parser.add_argument(
         "--eager",
         action="store_true",
-        help="Disable torch.compile even when Triton is installed (Jetson-safe eager path).",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
 
@@ -187,7 +229,7 @@ def main() -> None:
         max_disp=args.max_disp,
         scale=args.scale,
         hiera=args.hiera,
-        eager=args.eager,
+        allow_torch_compile=args.allow_torch_compile and not args.eager,
     )
 
 
