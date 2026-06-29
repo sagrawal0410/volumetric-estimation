@@ -35,7 +35,34 @@ When BOP scenes lack `cam_R_w2c` / `cam_t_w2c`, fusion uses the **model frame as
 
 This is documented and tested in `tests/test_plain_baseline.py`.
 
-## FoundationStereo
+## FoundationStereo and Fast-FoundationStereo
+
+volrecon supports two stereo depth backends via the same wrapper and CLI:
+
+| Backend | Repo | Checkpoint | Best for |
+|---------|------|------------|----------|
+| `foundation_stereo` (classic) | [NVlabs/FoundationStereo](https://github.com/NVlabs/FoundationStereo) | `pretrained_models/23-51-11/model_best_bp2.pth` | Offline max accuracy (GPU) |
+| `fast_foundation_stereo` | [NVlabs/Fast-FoundationStereo](https://github.com/NVlabs/Fast-FoundationStereo) | `weights/20-30-48/model_best_bp2_serialize.pth` | Jetson Orin / real-time |
+
+Use `--backend auto` (default) to detect from repo/`run_demo.py` or checkpoint filename. Each checkpoint folder must include **`cfg.yaml`** next to the `.pth` file.
+
+**Jetson / Orin example (Fast-FS 20-30-48):**
+
+```bash
+python -m volrecon.scripts.run_foundation_stereo \
+  --manifest data/processed/manifests/bop_tless_synth_manifest.jsonl \
+  --foundationstereo_repo ~/Fast-FoundationStereo \
+  --ckpt ~/Fast-FoundationStereo/weights/20-30-48 \
+  --backend fast_foundation_stereo \
+  --valid_iters 4 \
+  --max_disp 192 \
+  --scale 0.5 \
+  --out data/runs/plain_tsdf/bop_synth/depth_predictions
+```
+
+Headless Fast-FS inference uses `volrecon.stereo.fast_fs_inference` (no `cv2.imshow`), avoiding hangs on headless Jetson.
+
+## FoundationStereo (classic)
 
 ### Requirements per view
 

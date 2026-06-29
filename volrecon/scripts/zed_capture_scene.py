@@ -7,8 +7,7 @@ import os
 
 from rich.console import Console
 
-from volrecon.camera.capture_session import CaptureSession, CaptureSessionConfig
-from volrecon.camera.zed_capture import ZEDCaptureConfig, ZEDStereoCapture
+from volrecon.camera.zed_capture import ZEDCaptureConfig
 from volrecon.deployment.live_pipeline import LiveReconstructionPipeline
 from volrecon.deployment.live_config import LivePipelineConfig
 

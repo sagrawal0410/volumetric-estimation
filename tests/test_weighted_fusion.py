@@ -116,7 +116,10 @@ def test_weighted_beats_plain_on_corrupted_depth():
     assert delta_low < 0.4
 
 
-def test_no_stereo_blocks_foundation_stereo():
+def test_no_stereo_blocks_foundation_stereo(tmp_path: Path):
+    ckpt = tmp_path / "m.pth"
+    ckpt.touch()
+    (tmp_path / "cfg.yaml").write_text("vit_size: vitl\n", encoding="utf-8")
     view = ViewRecord(
         dataset="bop_tless",
         scene_id="s",
@@ -125,7 +128,7 @@ def test_no_stereo_blocks_foundation_stereo():
         stereo=StereoCalibration(has_true_stereo=False),
     )
     w = FoundationStereoWrapper(
-        FoundationStereoConfig(foundationstereo_repo=Path("/tmp"), ckpt=Path("/tmp/m.pth"))
+        FoundationStereoConfig(foundationstereo_repo=tmp_path, ckpt=ckpt)
     )
     with pytest.raises(ValueError, match="No true stereo"):
         w.validate_view(view)

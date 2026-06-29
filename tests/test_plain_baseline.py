@@ -148,7 +148,10 @@ def test_no_gt_depth_cheating(tmp_path: Path):
     assert np.allclose(pred.depth_m, depth, atol=1e-5)
 
 
-def test_no_stereo_raises_clear_error():
+def test_no_stereo_raises_clear_error(tmp_path: Path):
+    ckpt = tmp_path / "model.pth"
+    ckpt.touch()
+    (tmp_path / "cfg.yaml").write_text("vit_size: vitl\n", encoding="utf-8")
     view = ViewRecord(
         dataset="bop_tless",
         scene_id="000001",
@@ -159,8 +162,8 @@ def test_no_stereo_raises_clear_error():
         stereo=StereoCalibration(has_true_stereo=False, source="bop_standard"),
     )
     cfg = FoundationStereoConfig(
-        foundationstereo_repo=Path("/nonexistent"),
-        ckpt=Path("/nonexistent/model.pth"),
+        foundationstereo_repo=tmp_path,
+        ckpt=ckpt,
     )
     wrapper = FoundationStereoWrapper(cfg)
     with pytest.raises(ValueError, match="No true stereo pair"):

@@ -31,6 +31,8 @@ def main() -> None:
     parser.add_argument("--min_depth_m", type=float, default=0.1)
     parser.add_argument("--max_depth_m", type=float, default=2.0)
     parser.add_argument("--scale", type=float, default=1.0)
+    parser.add_argument("--backend", default="auto", choices=["auto", "foundation_stereo", "fast_foundation_stereo"])
+    parser.add_argument("--max_disp", type=int, default=192)
     parser.add_argument("--valid_iters", type=int, default=16)
     parser.add_argument("--project_root", type=Path, default=PROJECT_ROOT)
     args = parser.parse_args()
@@ -38,13 +40,16 @@ def main() -> None:
     cfg = FoundationStereoConfig(
         foundationstereo_repo=args.foundationstereo_repo,
         ckpt=args.ckpt,
+        backend=args.backend,
         scale=args.scale,
         valid_iters=args.valid_iters,
+        max_disp=args.max_disp,
         min_depth_m=args.min_depth_m,
         max_depth_m=args.max_depth_m,
         project_root=args.project_root,
     )
     wrapper = FoundationStereoWrapper(cfg)
+    logger.info("Stereo backend: %s ckpt=%s", wrapper.backend, wrapper.ckpt_file)
 
     records = [ViewRecord.from_dict(r) for r in read_jsonl(args.manifest)]
     by_scene: dict[str, list[ViewRecord]] = defaultdict(list)

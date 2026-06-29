@@ -85,8 +85,10 @@ class LiveReconstructionPipeline:
         fs_cfg = FoundationStereoConfig(
             foundationstereo_repo=self.config.stereo_depth.foundationstereo_repo,
             ckpt=self.config.stereo_depth.checkpoint,
+            backend=self.config.stereo_depth.backend,
             scale=self.config.stereo_depth.scale,
             valid_iters=self.config.stereo_depth.valid_iters,
+            max_disp=self.config.stereo_depth.max_disp,
             min_depth_m=self.config.stereo_depth.min_depth_m,
             max_depth_m=self.config.stereo_depth.max_depth_m,
         )

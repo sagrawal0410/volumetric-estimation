@@ -235,7 +235,15 @@ class ZEDStereoCapture:
         return {"left": left_path, "right": right_path}
 
     def build_view_record(self, frame: ZEDStereoFrame, paths: dict[str, Path], scene_id: str, view_id: str):
-        rel = {k: str(v.relative_to(PROJECT_ROOT) if v.is_absolute() else v) for k, v in paths.items()}
+        def _rel(p: Path) -> str:
+            if p.is_absolute():
+                try:
+                    return str(p.relative_to(PROJECT_ROOT))
+                except ValueError:
+                    return str(p)
+            return str(p)
+
+        rel = {k: _rel(v) for k, v in paths.items()}
         calib = {
             "K_left": frame.K_left,
             "K_right": frame.K_right,

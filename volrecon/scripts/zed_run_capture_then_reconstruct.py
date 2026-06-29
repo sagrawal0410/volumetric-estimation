@@ -30,6 +30,8 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--overwrite_depth", action="store_true")
+    parser.add_argument("--overwrite_recon", action="store_true")
     args = parser.parse_args()
 
     if args.mock:
@@ -55,6 +57,8 @@ def main() -> None:
             fusion=FusionLiveConfig(method=args.method, voxel_length_m=args.voxel_length_m, sdf_trunc_m=args.sdf_trunc_m),
             dry_run=args.dry_run,
             overwrite=args.overwrite,
+            overwrite_depth=args.overwrite_depth,
+            overwrite_recon=args.overwrite_recon,
         )
 
     pipeline = LiveReconstructionPipeline(cfg)

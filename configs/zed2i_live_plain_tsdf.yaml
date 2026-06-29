@@ -5,11 +5,13 @@ camera:
 
 stereo_depth:
   method: foundation_stereo
-  foundationstereo_repo: /path/to/FoundationStereo
-  checkpoint: /path/to/model_best_bp2.pth
+  backend: auto
+  foundationstereo_repo: /path/to/Fast-FoundationStereo
+  checkpoint: /path/to/Fast-FoundationStereo/weights/20-30-48
   min_depth_m: 0.2
   max_depth_m: 4.0
-  valid_iters: 16
+  valid_iters: 4
+  max_disp: 192
   scale: 0.5
 
 fusion:
