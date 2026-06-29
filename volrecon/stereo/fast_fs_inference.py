@@ -15,6 +15,50 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
+def _triton_available() -> bool:
+    import importlib.util
+
+    if importlib.util.find_spec("triton") is None:
+        return False
+    try:
+        import triton  # noqa: F401, WPS433
+
+        return True
+    except ImportError:
+        return False
+
+
+def _ensure_eager_torch_compile(*, force: bool = False) -> None:
+    """
+    Disable ``torch.compile`` when Triton is unavailable (typical on Jetson).
+
+    Fast-FoundationStereo decorates GWC/concat volume builders with ``@torch.compile``.
+    Without Triton, the inductor backend fails at first forward pass.
+    Must run before importing Fast-FoundationStereo ``core.*`` modules.
+    """
+    if not force and _triton_available():
+        return
+
+    import os
+
+    os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+    try:
+        import torch._dynamo as dynamo
+
+        dynamo.config.disable = True
+        dynamo.config.suppress_errors = True
+    except Exception:  # noqa: BLE001
+        pass
+
+    def _compile_identity(fn, *_args, **_kwargs):
+        return fn
+
+    torch.compile = _compile_identity  # type: ignore[misc, assignment]
+    logger.info(
+        "Triton unavailable; running Fast-FoundationStereo with eager PyTorch (no torch.compile)."
+    )
+
+
 def run_fast_fs_inference(
     repo: Path,
     model_path: Path,
@@ -26,6 +70,7 @@ def run_fast_fs_inference(
     max_disp: int = 192,
     scale: float = 1.0,
     hiera: int = 0,
+    eager: bool = False,
 ) -> np.ndarray:
     """
     Run Fast-FoundationStereo forward pass and save ``disparity.npy`` under ``out_dir``.
@@ -34,6 +79,8 @@ def run_fast_fs_inference(
     pass ``scale=1.0``.
     """
     from volrecon.stereo.stereo_backends import prepare_stereo_repo, require_cfg_yaml, resolve_repo_path
+
+    _ensure_eager_torch_compile(force=eager)
 
     repo = resolve_repo_path(repo)
     model_path = model_path.expanduser().resolve()
@@ -122,6 +169,11 @@ def main() -> None:
     parser.add_argument("--max_disp", type=int, default=192)
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--hiera", type=int, default=0)
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Disable torch.compile even when Triton is installed (Jetson-safe eager path).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -135,6 +187,7 @@ def main() -> None:
         max_disp=args.max_disp,
         scale=args.scale,
         hiera=args.hiera,
+        eager=args.eager,
     )
 
 

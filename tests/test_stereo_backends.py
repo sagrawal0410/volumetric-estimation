@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+import torch
 
 from volrecon.stereo.foundation_stereo_wrapper import FoundationStereoConfig, FoundationStereoWrapper
 from volrecon.stereo.stereo_backends import (
@@ -88,6 +89,18 @@ def test_prepare_stereo_repo_adds_repo_to_sys_path(tmp_path: Path):
     resolved = prepare_stereo_repo(repo, backend="fast_foundation_stereo")
     assert resolved == repo.resolve()
     assert str(resolved) in sys.path
+
+
+def test_ensure_eager_torch_compile_disables_dynamo(monkeypatch: pytest.MonkeyPatch):
+    from volrecon.stereo import fast_fs_inference
+
+    monkeypatch.setattr(fast_fs_inference, "_triton_available", lambda: False)
+    fast_fs_inference._ensure_eager_torch_compile()
+    import torch._dynamo as dynamo
+
+    assert dynamo.config.disable is True
+    assert callable(torch.compile)
+    assert torch.compile(lambda x: x) is not None
 
 
 def test_wrapper_builds_fast_fs_subprocess_command(tmp_path: Path):
