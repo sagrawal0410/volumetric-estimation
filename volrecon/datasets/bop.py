@@ -135,6 +135,10 @@ def extract_bop_tless(
     mode: str = "real_rgb_only",
     baseline_m: float | None = None,
     report_path: Path | None = None,
+    max_scenes: int | None = None,
+    frame_stride: int = 1,
+    max_views_per_scene: int | None = None,
+    skip_union_voxels: bool = False,
 ) -> list[ViewRecord]:
     if mode not in {"real_rgb_only", "synthetic_stereo_from_bop_mesh"}:
         raise ValueError(f"Unknown mode: {mode}")
@@ -152,6 +156,9 @@ def extract_bop_tless(
 
     all_views: list[ViewRecord] = []
     scene_dirs = sorted([p for p in split_dir.iterdir() if p.is_dir() and (p / "scene_camera.json").exists()])
+    if max_scenes is not None:
+        scene_dirs = scene_dirs[:max_scenes]
+        logger.info("Limiting to first %d BOP scenes", len(scene_dirs))
 
     for scene_dir in scene_dirs:
         scene_id = scene_dir.name
@@ -185,7 +192,13 @@ def extract_bop_tless(
         transformed_mesh_dir.mkdir(parents=True, exist_ok=True)
         voxel_grids: list[np.ndarray] = []
 
-        for im_id_str, cam_entry in sorted(scene_camera.items(), key=lambda x: int(x[0])):
+        cam_items = sorted(scene_camera.items(), key=lambda x: int(x[0]))
+        if frame_stride > 1:
+            cam_items = cam_items[::frame_stride]
+        if max_views_per_scene is not None:
+            cam_items = cam_items[:max_views_per_scene]
+
+        for im_id_str, cam_entry in cam_items:
             im_id = int(im_id_str)
             view_id = f"{im_id:06d}"
             view_dir = build_view_directory(scene_out, view_id)
@@ -341,11 +354,12 @@ def extract_bop_tless(
                 out_mesh = transformed_mesh_dir / f"obj_{op.obj_id:06d}_inst{op.instance_id}.ply"
                 save_mesh_ply(out_mesh, transformed)
                 try:
-                    voxel_grids.append(voxelize_mesh(transformed, cfg.voxel_size_m))
+                    if not skip_union_voxels:
+                        voxel_grids.append(voxelize_mesh(transformed, cfg.voxel_size_m))
                 except Exception:  # noqa: BLE001
                     pass
 
-        if voxel_grids:
+        if voxel_grids and not skip_union_voxels:
             union = voxel_grids[0].copy()
             for g in voxel_grids[1:]:
                 if g.shape == union.shape:

@@ -24,6 +24,14 @@ def main() -> None:
     parser.add_argument("--symlink", action="store_true")
     parser.add_argument("--copy", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--max_scenes", type=int, default=None, help="Process only first N scenes (low RAM)")
+    parser.add_argument("--frame_stride", type=int, default=1, help="Keep every Nth frame")
+    parser.add_argument("--max_views_per_scene", type=int, default=None, help="Cap views per scene")
+    parser.add_argument(
+        "--skip_union_voxels",
+        action="store_true",
+        help="Skip union_gt_voxels.npz (saves RAM on Jetson)",
+    )
     args = parser.parse_args()
 
     cfg = PreprocessConfig(
@@ -43,6 +51,10 @@ def main() -> None:
         cfg=cfg,
         mode=args.mode,
         baseline_m=args.baseline_m,
+        max_scenes=args.max_scenes,
+        frame_stride=args.frame_stride,
+        max_views_per_scene=args.max_views_per_scene,
+        skip_union_voxels=args.skip_union_voxels,
     )
     print(f"BOP T-LESS extraction complete. Manifest: {args.manifest}")
 
